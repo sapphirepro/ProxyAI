@@ -6,6 +6,7 @@ import ee.carlrobert.codegpt.conversations.message.Message
 import ee.carlrobert.codegpt.settings.models.ModelSettings
 import ee.carlrobert.codegpt.settings.service.FeatureType
 import ee.carlrobert.codegpt.settings.service.ServiceType
+import ee.carlrobert.codegpt.settings.service.custom.CustomServiceChatCompletionSettingsState
 import org.assertj.core.api.Assertions.assertThat
 import testsupport.IntegrationTest
 import testsupport.http.RequestEntity
@@ -138,6 +139,66 @@ class CompletionServiceKoogIntegrationTest : IntegrationTest() {
         )
 
         assertThat(result).isEqualTo("fun value() = 2")
+    }
+
+    fun testCustomOpenAISettingsTestConnectionUsesChatCompletionCapability() {
+        val settings = CustomServiceChatCompletionSettingsState().apply {
+            url = System.getProperty("customOpenAI.baseUrl") + "/v9/chat/completions"
+            headers.clear()
+            body.clear()
+            body["model"] = "custom-chat-model"
+            body["stream"] = false
+            body["max_tokens"] = 16
+        }
+        expectCustomOpenAI(BasicHttpExchange { request ->
+            assertThat(request.uri.path).isEqualTo("/v9/chat/completions")
+            assertThat(request.method).isEqualTo("POST")
+            assertThat(request.body["model"]).isEqualTo("custom-chat-model")
+            ResponseEntity(
+                jsonMapResponse(
+                    e("id", "chatcmpl-test"),
+                    e("object", "chat.completion"),
+                    e("created", 1),
+                    e("model", "custom-chat-model"),
+                    e(
+                        "choices",
+                        jsonArray(
+                            jsonMap(
+                                e("index", 0),
+                                e(
+                                    "message",
+                                    jsonMap(
+                                        e("role", "assistant"),
+                                        e("content", "Connection ok")
+                                    )
+                                ),
+                                e("finish_reason", "stop")
+                            )
+                        )
+                    ),
+                    e(
+                        "usage",
+                        jsonMap(
+                            e("prompt_tokens", 1),
+                            e("completion_tokens", 1),
+                            e("total_tokens", 2)
+                        )
+                    )
+                )
+            )
+        })
+        val listener = RecordingListener()
+
+        CompletionRequestService.testCustomServiceConnectionAsync(
+            settings = settings,
+            apiKey = "TEST_API_KEY",
+            modelId = "custom-chat-model",
+            eventListener = listener
+        )
+        waitExpecting { listener.completed != null || listener.error != null }
+
+        assertThat(listener.error).isNull()
+        assertThat(listener.completed).isEqualTo("Connection ok")
     }
 
     private class RecordingListener : CompletionStreamEventListener {

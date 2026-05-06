@@ -94,9 +94,10 @@ object CompletionRequestService {
     ): CancellableRequest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val model = LLModel(
-            id = modelId?.takeIf { it.isNotBlank() } ?: "gpt-4.1-mini",
+            id = modelId.orEmpty(),
             provider = CustomOpenAILLMClient.CustomOpenAI,
             capabilities = listOf(
+                LLMCapability.Completion,
                 if (ResponsesApiUtil.isResponsesApiUrl(settings.url)) {
                     LLMCapability.OpenAIEndpoint.Responses
                 } else {
