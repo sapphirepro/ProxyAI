@@ -5,8 +5,8 @@ import ai.koog.serialization.JSONObject
 import ai.koog.serialization.TypeToken
 import ai.koog.serialization.typeToken
 import ee.carlrobert.codegpt.agent.tools.*
+import ee.carlrobert.codegpt.agent.tools.ide.DebugSessionControlTool
 import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.ToolApprovalType
-import kotlinx.serialization.builtins.serializer
 
 enum class ToolName(val id: String, val aliases: Set<String> = emptySet()) {
     READ(ReadTool.NAME, setOf("ReadFile")),
@@ -29,6 +29,7 @@ enum class ToolName(val id: String, val aliases: Set<String> = emptySet()) {
     TASK(TaskTool.NAME),
     ASK_USER_QUESTION(AskUserQuestionTool.NAME),
     TODO_WRITE(TodoWriteTool.NAME, setOf("TodoWriteTool")),
+    DEBUG_SESSION_CONTROL(DebugSessionControlTool.NAME),
     EXIT("Exit");
 }
 
@@ -173,6 +174,14 @@ object ToolSpecs {
                 ToolName.TODO_WRITE,
                 typeToken<TodoWriteTool.Args>(),
                 typeToken<String>()
+            )
+        )
+        register(
+            ToolSpec<DebugSessionControlTool.Args, DebugSessionControlTool.Result>(
+                ToolName.DEBUG_SESSION_CONTROL,
+                typeToken<DebugSessionControlTool.Args>(),
+                typeToken<DebugSessionControlTool.Result>(),
+                ToolApprovalType.GENERIC
             )
         )
         register(

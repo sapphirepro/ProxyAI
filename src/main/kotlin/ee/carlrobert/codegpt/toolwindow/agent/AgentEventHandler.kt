@@ -19,6 +19,11 @@ import ee.carlrobert.codegpt.agent.*
 import ee.carlrobert.codegpt.agent.history.CheckpointRef
 import ee.carlrobert.codegpt.agent.rollback.RollbackService
 import ee.carlrobert.codegpt.agent.tools.*
+import ee.carlrobert.codegpt.agent.tools.ide.BreakpointTool
+import ee.carlrobert.codegpt.agent.tools.ide.ExecuteRunConfigurationTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetBreakpointsTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetDebugSessionsTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetRunOutputTool
 import ee.carlrobert.codegpt.completions.ToolApprovalMode
 import ee.carlrobert.codegpt.settings.agents.SubagentRuntimeResolver
 import ee.carlrobert.codegpt.settings.service.ServiceType
@@ -533,6 +538,7 @@ class AgentEventHandler(
                     args,
                     null
                 )
+
                 is TodoWriteTool.Args -> RunEntry.TodoWriteEntry(cid, parentId, args, null)
 
                 is WriteTool.Args -> {
@@ -547,6 +553,17 @@ class AgentEventHandler(
 
                 is TaskTool.Args -> createTaskEntry(cid, parentId, args)
                 is McpTool.Args -> RunEntry.McpEntry(cid, parentId, args, null)
+
+                is BreakpointTool.Args -> RunEntry.BreakpointEntry(cid, parentId, args, null)
+                is GetBreakpointsTool.Args ->
+                    RunEntry.GetBreakpointsEntry(cid, parentId, args, null)
+
+                is GetDebugSessionsTool.Args ->
+                    RunEntry.DebugSessionsEntry(cid, parentId, args, null)
+
+                is GetRunOutputTool.Args -> RunEntry.RunOutputEntry(cid, parentId, args, null)
+                is ExecuteRunConfigurationTool.Args ->
+                    RunEntry.ExecuteRunConfigurationEntry(cid, parentId, args, null)
 
                 else -> RunEntry.OtherEntry(cid, parentId, toolName)
             }

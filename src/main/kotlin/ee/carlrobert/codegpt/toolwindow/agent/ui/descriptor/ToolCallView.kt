@@ -6,6 +6,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.ui.Gray
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
@@ -80,14 +81,21 @@ private class ToolCallHeaderPanel(
 ) : JBPanel<ToolCallHeaderPanel>() {
 
     private val leftRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply { isOpaque = false }
+    private val contentPanel = JPanel().apply {
+        isOpaque = false
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+    }
     private var fileLink: ActionLink? = null
 
     init {
-        layout = BorderLayout()
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
         isOpaque = false
 
         buildHeaderContent()
-        add(leftRow, BorderLayout.WEST)
+        contentPanel.add(leftRow)
+        buildDetailLine()?.let { contentPanel.add(it) }
+        buildActionsLine()?.let { contentPanel.add(it) }
+        add(contentPanel)
     }
 
     private fun buildHeaderContent() {
@@ -109,13 +117,18 @@ private class ToolCallHeaderPanel(
 
         addSecondaryBadges()
 
-        if (descriptor.actions.isNotEmpty()) {
-            addActionLinks()
-        }
     }
 
     private fun addFileLink() {
         val fileLink = descriptor.fileLink!!
+        if (descriptor.titleMain.isNotBlank()) {
+            leftRow.add(JBLabel(descriptor.titleMain).apply {
+                if (!descriptor.tooltip.isNullOrBlank()) {
+                    toolTipText = descriptor.tooltip
+                }
+            })
+            leftRow.add(mutedLabel("  "))
+        }
         val link = ActionLink(fileLink.displayName) {
             val project = getProject()
             if (project != null) {
@@ -146,12 +159,20 @@ private class ToolCallHeaderPanel(
 
         this.fileLink = link
         leftRow.add(link)
+    }
 
-        descriptor.summary?.let { summary ->
-            leftRow.add(JBLabel(" · $summary").withFont(JBFont.small()).apply {
-                foreground = JBUI.CurrentTheme.Label.disabledForeground()
-            })
+    private fun shouldShowFileLinkSummary(summary: String, fileLink: FileLink): Boolean {
+        val normalizedSummary = summary.trim()
+        if (normalizedSummary.isEmpty()) {
+            return false
         }
+
+        val linkDisplay = fileLink.displayName.trim()
+        val lineSuffix = fileLink.line?.let { ":L$it" }.orEmpty()
+        val pathWithLine = "${fileLink.path}$lineSuffix"
+        return normalizedSummary != fileLink.path &&
+            normalizedSummary != pathWithLine &&
+            normalizedSummary != linkDisplay
     }
 
     private fun addRegularContent() {
@@ -161,42 +182,33 @@ private class ToolCallHeaderPanel(
         }
         leftRow.add(content)
 
-        descriptor.summary?.let { summary ->
-            leftRow.add(JBLabel(" · $summary").withFont(JBFont.small()).apply {
-                foreground = JBUI.CurrentTheme.Label.disabledForeground()
-            })
-        }
-
         addSearchParametersIfAny()
     }
 
     private fun addSecondaryBadges() {
         var prevWasDiff = false
         descriptor.secondaryBadges.forEach { badge ->
+            if (badge.action != null) {
+                return@forEach
+            }
             val isDiff = isDiffBadge(badge.text)
             val leftGap = if (isDiff && prevWasDiff) 0 else 4
-            if (badge.action != null) {
-                val link = ActionLink(badge.text) {
-                    badge.action.invoke()
-                }.apply {
-                    font = JBUI.Fonts.smallFont()
+            leftRow.add(JBLabel(badge.text).withFont(JBFont.small()).apply {
+                foreground = badge.color
+                if (badge.tooltip != null) {
+                    toolTipText = badge.tooltip
                 }
-                leftRow.add(link.apply { border = JBUI.Borders.emptyLeft(leftGap) })
-            } else {
-                leftRow.add(JBLabel(badge.text).withFont(JBFont.small()).apply {
-                    foreground = badge.color
-                    if (badge.tooltip != null) {
-                        toolTipText = badge.tooltip
-                    }
-                    border = JBUI.Borders.emptyLeft(leftGap)
-                })
-            }
+                border = JBUI.Borders.compound(
+                    JBUI.Borders.emptyLeft(leftGap),
+                    JBUI.Borders.empty(1, 6)
+                )
+            })
             prevWasDiff = isDiff
         }
     }
 
     private fun isDiffBadge(text: String): Boolean {
-        return text.startsWith("[+") || text.startsWith("[-") || text.startsWith("[~")
+        return text.startsWith("+") || text.startsWith("-") || text.startsWith("~")
     }
 
     private fun showSearchResultsDialog(content: String) {
@@ -254,15 +266,67 @@ private class ToolCallHeaderPanel(
         repaint()
     }
 
-    private fun addActionLinks() {
-        descriptor.actions.forEach { action ->
-            val link = ActionLink("[${action.name}]") { action.action(this@ToolCallHeaderPanel) }.apply {
-                font = JBFont.small()
+    private fun buildActionsLine(): JComponent? {
+        val inlineActions = buildInlineActions()
+        if (inlineActions.isEmpty()) {
+            return null
+        }
+
+        return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            isOpaque = false
+            border = JBUI.Borders.empty(2, 20, 0, 0)
+            inlineActions.forEachIndexed { index, action ->
+                if (index > 0) {
+                    add(mutedLabel("  ·  "))
+                }
+                add(ActionLink("[${action.label}]") { action.action() }.apply {
+                    font = JBUI.Fonts.smallFont()
+                })
             }
-            leftRow.add(JBLabel(" "))
-            leftRow.add(link)
         }
     }
+
+    private fun buildDetailLine(): JComponent? {
+        val detailText = descriptor.detailText?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: descriptor.summary
+                ?.trim()
+                ?.takeUnless { it.isNullOrEmpty() }
+                ?.takeIf { summary ->
+                    descriptor.fileLink?.let { shouldShowFileLinkSummary(summary, it) } ?: true
+                }
+        if (detailText == null) {
+            return null
+        }
+
+        return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+            isOpaque = false
+            border = JBUI.Borders.empty(2, 20, 0, 0)
+            add(mutedLabel(detailText))
+        }
+    }
+
+    private fun mutedLabel(text: String): JBLabel {
+        return JBLabel(text).withFont(JBFont.small()).apply {
+            foreground = Gray.x88
+        }
+    }
+
+    private fun buildInlineActions(): List<InlineAction> {
+        val descriptorActions = descriptor.actions.map { action ->
+            InlineAction(action.name) { action.action(this@ToolCallHeaderPanel) }
+        }
+        val badgeActions = descriptor.secondaryBadges
+            .filter { it.action != null }
+            .map { badge ->
+                InlineAction(badge.text) { badge.action?.invoke() }
+            }
+        return descriptorActions + badgeActions
+    }
+
+    private data class InlineAction(
+        val label: String,
+        val action: () -> Unit
+    )
 
     private fun addSearchParametersIfAny() {
         val args = descriptor.args

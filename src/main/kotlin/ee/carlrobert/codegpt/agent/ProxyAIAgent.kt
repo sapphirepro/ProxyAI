@@ -28,6 +28,7 @@ import ee.carlrobert.codegpt.agent.strategy.HistoryCompressionConfig
 import ee.carlrobert.codegpt.agent.strategy.SingleRunStrategyProvider
 import ee.carlrobert.codegpt.agent.strategy.buildHistoryTooBigPredicate
 import ee.carlrobert.codegpt.agent.tools.*
+import ee.carlrobert.codegpt.agent.tools.ide.*
 import ee.carlrobert.codegpt.settings.configuration.ConfigurationSettings
 import ee.carlrobert.codegpt.settings.hooks.HookEventType
 import ee.carlrobert.codegpt.settings.hooks.HookManager
@@ -348,6 +349,28 @@ object ProxyAIAgent {
             tool(ReadTool(project, sessionId, hookManager))
             tool(ConfirmingEditTool(EditTool(project, sessionId, hookManager), standardApproval))
             tool(ConfirmingWriteTool(WriteTool(project, sessionId, hookManager), writeApproval))
+            tool(
+                ConfirmingExecuteRunConfigurationTool(
+                    ExecuteRunConfigurationTool(project, sessionId, hookManager),
+                    genericApproval
+                )
+            )
+            tool(
+                ConfirmingBreakpointTool(
+                    BreakpointTool(project, sessionId, hookManager),
+                    genericApproval
+                )
+            )
+            tool(
+                ConfirmingDebugSessionControlTool(
+                    DebugSessionControlTool(project, sessionId, hookManager),
+                    genericApproval
+                )
+            )
+            tool(GetRunOutputTool(project, sessionId, hookManager))
+            tool(GetRunConfigurationsTool(project, sessionId, hookManager))
+            tool(GetDebugSessionsTool(project, sessionId, hookManager))
+            tool(GetBreakpointsTool(project, sessionId, hookManager))
             tool(TodoWriteTool(project, sessionId, hookManager))
             tool(AskUserQuestionTool(workingDirectory, sessionId, hookManager, events))
             createMcpTools(sessionId, contextService, genericApproval).forEach { mcpTool ->

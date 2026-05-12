@@ -6,7 +6,9 @@ import java.awt.Component
 import javax.swing.Icon
 
 enum class ToolKind {
-    READ, WRITE, EDIT, BASH, BASH_OUTPUT, KILL_SHELL, SEARCH, WEB, TASK, TODO_WRITE, MCP, LIBRARY_RESOLVE, LIBRARY_DOCS, SKILL, ASK_QUESTION, EXIT, DIAGNOSTICS, OTHER
+    READ, WRITE, EDIT, BASH, BASH_OUTPUT, KILL_SHELL, SEARCH, WEB, TASK, TODO_WRITE, MCP, LIBRARY_RESOLVE, LIBRARY_DOCS, SKILL, ASK_QUESTION, EXIT, DIAGNOSTICS,
+    IDE_RUN_CONFIGURATION, IDE_REFACTORING, IDE_DEBUGGER, IDE_SYMBOL_INFO,
+    OTHER
 }
 
 data class Badge(
@@ -45,5 +47,6 @@ data class ToolCallDescriptor(
     val result: Any? = null,
     val projectId: String? = null,
     val prefixColor: JBColor? = null,
-    val summary: String? = null
+    val summary: String? = null,
+    val detailText: String? = null,
 )

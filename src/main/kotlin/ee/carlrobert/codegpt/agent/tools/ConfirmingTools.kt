@@ -4,7 +4,10 @@ import ai.koog.agents.core.tools.Tool
 import ai.koog.serialization.typeToken
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
+import ee.carlrobert.codegpt.agent.tools.ide.BreakpointTool
+import ee.carlrobert.codegpt.agent.tools.ide.DebugSessionControlTool
 import ee.carlrobert.codegpt.settings.skills.SkillDiscoveryService
+import ee.carlrobert.codegpt.agent.tools.ide.ExecuteRunConfigurationTool
 
 class ConfirmingWriteTool(
     private val delegate: WriteTool,
@@ -79,6 +82,125 @@ class ConfirmingEditTool(
             return EditTool.Result.Error(
                 filePath = args.filePath,
                 error = "User rejected edit operation"
+            )
+        }
+        return delegate.execute(args)
+    }
+}
+
+class ConfirmingExecuteRunConfigurationTool(
+    private val delegate: ExecuteRunConfigurationTool,
+    private val approve: suspend (name: String, details: String) -> Boolean
+) : Tool<ExecuteRunConfigurationTool.Args, ExecuteRunConfigurationTool.Result>(
+    argsType = typeToken<ExecuteRunConfigurationTool.Args>(),
+    resultType = typeToken<ExecuteRunConfigurationTool.Result>(),
+    name = delegate.name,
+    description = delegate.descriptor.description
+) {
+
+    override suspend fun execute(args: ExecuteRunConfigurationTool.Args): ExecuteRunConfigurationTool.Result {
+        val details = buildString {
+            append("Configuration: ")
+            append(args.configurationName)
+            append("\n")
+            append("Executor: ")
+            append(args.executorName)
+            if (args.projectPath != null) {
+                append("\n")
+                append("Project: ")
+                append(args.projectPath)
+            }
+        }
+        val ok = approve("Execute Run Configuration", details)
+        if (!ok) {
+            return ExecuteRunConfigurationTool.Result.Error(
+                "User rejected run configuration execution"
+            )
+        }
+        return delegate.execute(args)
+    }
+}
+
+class ConfirmingBreakpointTool(
+    private val delegate: BreakpointTool,
+    private val approve: suspend (name: String, details: String) -> Boolean
+) : Tool<BreakpointTool.Args, BreakpointTool.Result>(
+    argsType = typeToken<BreakpointTool.Args>(),
+    resultType = typeToken<BreakpointTool.Result>(),
+    name = delegate.name,
+    description = delegate.descriptor.description
+) {
+
+    override suspend fun execute(args: BreakpointTool.Args): BreakpointTool.Result {
+        val action = (args.action ?: "create").lowercase()
+        val actionLabel = when (action) {
+            "delete" -> "Remove Breakpoint"
+            "edit" -> "Edit Breakpoint"
+            else -> "Add Breakpoint"
+        }
+        val details = buildString {
+            append("Action: ")
+            append(
+                when (action) {
+                    "delete" -> "remove"
+                    "edit" -> "edit"
+                    else -> "add"
+                }
+            )
+            append("\nFile: ")
+            append(args.filePath)
+            append("\nLine: ")
+            append(args.line)
+            args.breakpointType?.takeIf { it.isNotBlank() }?.let {
+                append("\nType: ")
+                append(it)
+            }
+            args.condition?.takeIf { it.isNotBlank() }?.let {
+                append("\nCondition: ")
+                append(it)
+            }
+        }
+        val ok = approve(actionLabel, details)
+        if (!ok) {
+            return BreakpointTool.Result.Error(
+                "User rejected breakpoint operation"
+            )
+        }
+        return delegate.execute(args)
+    }
+}
+
+class ConfirmingDebugSessionControlTool(
+    private val delegate: DebugSessionControlTool,
+    private val approve: suspend (name: String, details: String) -> Boolean
+) : Tool<DebugSessionControlTool.Args, DebugSessionControlTool.Result>(
+    argsType = typeToken<DebugSessionControlTool.Args>(),
+    resultType = typeToken<DebugSessionControlTool.Result>(),
+    name = delegate.name,
+    description = delegate.descriptor.description
+) {
+
+    override suspend fun execute(args: DebugSessionControlTool.Args): DebugSessionControlTool.Result {
+        val details = buildString {
+            append("Action: ")
+            append(args.action)
+            args.sessionName?.takeIf { it.isNotBlank() }?.let {
+                append("\nSession: ")
+                append(it)
+            }
+            args.filePath?.takeIf { it.isNotBlank() }?.let {
+                append("\nFile: ")
+                append(it)
+            }
+            args.line?.let {
+                append("\nLine: ")
+                append(it)
+            }
+        }
+        val ok = approve("Debug Session Control", details)
+        if (!ok) {
+            return DebugSessionControlTool.Result.Error(
+                "User rejected debug session control operation"
             )
         }
         return delegate.execute(args)

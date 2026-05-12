@@ -23,10 +23,10 @@ data class DiffBadgeText(
 fun diffBadgeText(inserted: Int, deleted: Int, changed: Int, spaced: Boolean = true): DiffBadgeText {
     val sep = if (spaced) " " else ""
     return DiffBadgeText(
-        inserted = "[+$inserted]$sep",
-        deleted = "[-$deleted]$sep",
-        changed = "[~$changed]",
-        summary = "[+$inserted]${sep}[-$deleted]${sep}[~$changed]"
+        inserted = "+$inserted$sep",
+        deleted = "-$deleted$sep",
+        changed = "~$changed",
+        summary = "+$inserted${sep}-$deleted${sep}~$changed"
     )
 }
 

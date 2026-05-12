@@ -1,6 +1,12 @@
 package ee.carlrobert.codegpt.toolwindow.agent.ui
 
 import ee.carlrobert.codegpt.agent.tools.*
+import ee.carlrobert.codegpt.agent.tools.ide.BreakpointTool
+import ee.carlrobert.codegpt.agent.tools.ide.DebugSessionControlTool
+import ee.carlrobert.codegpt.agent.tools.ide.ExecuteRunConfigurationTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetBreakpointsTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetDebugSessionsTool
+import ee.carlrobert.codegpt.agent.tools.ide.GetRunOutputTool
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolKind
 
 sealed class RunEntry {
@@ -157,6 +163,78 @@ sealed class RunEntry {
             copy(result = result as? GetLibraryDocsTool.Result)
     }
 
+    data class BreakpointEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: BreakpointTool.Args? = null,
+        override val result: BreakpointTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.OTHER
+        override val toolName: String = "Breakpoint"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? BreakpointTool.Result)
+    }
+
+    data class GetBreakpointsEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: GetBreakpointsTool.Args? = null,
+        override val result: GetBreakpointsTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.OTHER
+        override val toolName: String = "GetBreakpoints"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? GetBreakpointsTool.Result)
+    }
+
+    data class DebugSessionsEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: GetDebugSessionsTool.Args? = null,
+        override val result: GetDebugSessionsTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.OTHER
+        override val toolName: String = "GetDebugSessions"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? GetDebugSessionsTool.Result)
+    }
+
+    data class DebugSessionControlEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: DebugSessionControlTool.Args? = null,
+        override val result: DebugSessionControlTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.IDE_DEBUGGER
+        override val toolName: String = "DebugSessionControl"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? DebugSessionControlTool.Result)
+    }
+
+    data class RunOutputEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: GetRunOutputTool.Args? = null,
+        override val result: GetRunOutputTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.OTHER
+        override val toolName: String = "GetRunOutput"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? GetRunOutputTool.Result)
+    }
+
+    data class ExecuteRunConfigurationEntry(
+        override val id: String,
+        override val parentId: String? = null,
+        override val args: ExecuteRunConfigurationTool.Args? = null,
+        override val result: ExecuteRunConfigurationTool.Result? = null,
+    ) : RunEntry() {
+        override val kind: ToolKind = ToolKind.IDE_RUN_CONFIGURATION
+        override val toolName: String = "ExecuteRunConfiguration"
+        override fun withAnyResult(result: Any?): RunEntry =
+            copy(result = result as? ExecuteRunConfigurationTool.Result)
+    }
+
     data class OtherEntry(
         override val id: String,
         override val parentId: String? = null,
@@ -211,7 +289,7 @@ class AgentRunViewModel {
     }
 }
 
-data class TaskSummary(
+ data class TaskSummary(
     val toolCalls: Int,
     val tokens: Long,
     val runtimeLabel: String? = null,
