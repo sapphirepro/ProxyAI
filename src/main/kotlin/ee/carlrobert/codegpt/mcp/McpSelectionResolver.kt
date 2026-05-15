@@ -56,8 +56,6 @@ class McpSelectionResolver {
             .associateBy { it.serverId }
             .toMutableMap()
 
-        val connectedServerIds = mutableListOf<String>()
-        val failedServerIds = linkedMapOf<String, String>()
         val resolvedAttachments = mutableListOf<McpSessionAttachment>()
 
         selectedMcpTags.forEach { tag ->
@@ -75,7 +73,6 @@ class McpSelectionResolver {
             when {
                 resolvedAttachment == null -> {
                     val errorMessage = "Failed to attach MCP server"
-                    failedServerIds[tag.serverId] = errorMessage
                     updateTag(
                         conversationId,
                         tag.serverId,
@@ -84,7 +81,6 @@ class McpSelectionResolver {
                 }
 
                 resolvedAttachment.connectionStatus == ConnectionStatus.CONNECTED -> {
-                    connectedServerIds += resolvedAttachment.serverId
                     resolvedAttachments += resolvedAttachment
                     updateTag(
                         conversationId,
@@ -96,7 +92,6 @@ class McpSelectionResolver {
                 else -> {
                     val errorMessage =
                         resolvedAttachment.lastError ?: "Failed to connect MCP server"
-                    failedServerIds[tag.serverId] = errorMessage
                     updateTag(
                         conversationId,
                         tag.serverId,
@@ -107,10 +102,7 @@ class McpSelectionResolver {
         }
 
         return McpResolutionResult(
-            attachments = resolvedAttachments,
-            tools = resolvedAttachments.flatMap { it.availableTools },
-            connectedServerIds = connectedServerIds,
-            failedServerIds = failedServerIds
+            attachments = resolvedAttachments
         )
     }
 
@@ -162,12 +154,9 @@ class McpSelectionResolver {
 }
 
 data class McpResolutionResult(
-    val attachments: List<McpSessionAttachment>,
-    val tools: List<McpTool>,
-    val connectedServerIds: List<String>,
-    val failedServerIds: Map<String, String>
+    val attachments: List<McpSessionAttachment>
 ) {
     companion object {
-        val EMPTY = McpResolutionResult(emptyList(), emptyList(), emptyList(), emptyMap())
+        val EMPTY = McpResolutionResult(emptyList())
     }
 }

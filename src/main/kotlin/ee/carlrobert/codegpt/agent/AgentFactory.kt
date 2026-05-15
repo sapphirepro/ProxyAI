@@ -15,7 +15,6 @@ import ai.koog.agents.core.feature.handler.tool.ToolCallCompletedContext
 import ai.koog.agents.core.feature.handler.tool.ToolCallStartingContext
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.ext.tool.ExitTool
 import ai.koog.agents.ext.tool.shell.ShellCommandConfirmation
 import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.agents.features.tokenizer.feature.MessageTokenizer
@@ -42,7 +41,7 @@ import ee.carlrobert.codegpt.EncodingManager
 import ee.carlrobert.codegpt.agent.clients.CustomOpenAILLMClient
 import ee.carlrobert.codegpt.agent.clients.RetryingPromptExecutor
 import ee.carlrobert.codegpt.agent.credits.extractCreditsSnapshot
-import ee.carlrobert.codegpt.agent.tools.*
+import ee.carlrobert.codegpt.agent.tools.BashCommandConfirmationHandler
 import ee.carlrobert.codegpt.settings.hooks.HookManager
 import ee.carlrobert.codegpt.settings.models.LLMClientFactory
 import ee.carlrobert.codegpt.settings.models.ModelSelection
@@ -72,7 +71,7 @@ object AgentFactory {
         onAgentToolCallStarting: ((eventContext: ToolCallStartingContext) -> Unit)? = null,
         onAgentToolCallCompleted: ((eventContext: ToolCallCompletedContext) -> Unit)? = null,
         extraBehavior: String? = null,
-        toolOverrides: Set<SubagentTool>? = null,
+        toolOverrides: Set<ToolName>? = null,
         onCreditsAvailable: ((AgentCreditsEvent) -> Unit)? = null,
         tokenCounter: AtomicLong? = null,
         events: AgentEvents? = null,
@@ -141,7 +140,7 @@ object AgentFactory {
         val executor = createExecutor(provider)
         val agentModel = modelSelection?.llmModel ?: service<ModelSettings>().getAgentModel()
 
-        val selected = SubagentTool.parse(toolNames)
+        val selected = ToolName.parse(toolNames)
         val registry = createToolRegistry(
             project,
             sessionId,
@@ -306,13 +305,13 @@ object AgentFactory {
         approveToolCall: (suspend (name: String, details: String) -> Boolean)? = null,
         installFeatures: GraphAIAgent.FeatureContext.() -> Unit = {},
         extraBehavior: String? = null,
-        toolOverrides: Set<SubagentTool>? = null,
+        toolOverrides: Set<ToolName>? = null,
         executor: PromptExecutor,
         agentModel: LLModel,
         tokenCounter: AtomicLong?,
         hookManager: HookManager,
     ): AIAgent<String, String> {
-        val selectedTools = toolOverrides ?: SubagentTool.entries.toSet()
+        val selectedTools = toolOverrides ?: ToolName.entries.toSet()
         return AIAgent.Companion(
             promptExecutor = executor,
             strategy = singleRunWithParallelAbility(executor, tokenCounter),
@@ -388,13 +387,13 @@ object AgentFactory {
         approveToolCall: (suspend (name: String, details: String) -> Boolean)? = null,
         installFeatures: GraphAIAgent.FeatureContext.() -> Unit = {},
         extraBehavior: String? = null,
-        toolOverrides: Set<SubagentTool>? = null,
+        toolOverrides: Set<ToolName>? = null,
         executor: PromptExecutor,
         agentModel: LLModel,
         tokenCounter: AtomicLong?,
         hookManager: HookManager
     ): AIAgent<String, String> {
-        val selectedTools = toolOverrides ?: (SubagentTool.readOnly + SubagentTool.BASH).toSet()
+        val selectedTools = toolOverrides ?: (ToolName.readOnly + ToolName.BASH).toSet()
         return AIAgent.Companion(
             promptExecutor = executor,
             strategy = singleRunWithParallelAbility(executor, tokenCounter),
@@ -612,128 +611,18 @@ object AgentFactory {
         project: Project,
         sessionId: String,
         approveToolCall: (suspend (name: String, details: String) -> Boolean)?,
-        selected: Set<SubagentTool>,
+        selected: Set<ToolName>,
         bashConfirmationHandler: BashCommandConfirmationHandler,
         hookManager: HookManager
     ): ToolRegistry {
-        val contextService = project.service<AgentMcpContextService>()
-        val mcpContext = contextService.get(sessionId)
-        return ToolRegistry.Companion {
-            if (SubagentTool.READ in selected) tool(ReadTool(project, sessionId, hookManager))
-            if (SubagentTool.EDIT in selected) {
-                tool(
-                    ConfirmingEditTool(EditTool(project, sessionId, hookManager)) { name, details ->
-                        approveToolCall?.invoke(name, details) ?: false
-                    }
-                )
-            }
-            if (SubagentTool.WRITE in selected) {
-                tool(
-                    ConfirmingWriteTool(
-                        WriteTool(
-                            project,
-                            sessionId,
-                            hookManager
-                        )
-                    ) { name, details ->
-                        approveToolCall?.invoke(name, details) ?: false
-                    }
-                )
-            }
-            if (SubagentTool.TODO_WRITE in selected) tool(
-                TodoWriteTool(
-                    project = project,
-                    sessionId = sessionId,
-                    hookManager = hookManager
-                )
-            )
-            if (SubagentTool.INTELLIJ_SEARCH in selected) tool(
-                IntelliJSearchTool(
-                    project = project,
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.DIAGNOSTICS in selected) tool(
-                DiagnosticsTool(
-                    project = project,
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.WEB_SEARCH in selected) tool(
-                WebSearchTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.WEB_FETCH in selected) tool(
-                WebFetchTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.BASH_OUTPUT in selected) tool(
-                BashOutputTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.KILL_SHELL in selected) tool(
-                KillShellTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.RESOLVE_LIBRARY_ID in selected) tool(
-                ResolveLibraryIdTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager,
-                )
-            )
-            if (SubagentTool.GET_LIBRARY_DOCS in selected) tool(
-                GetLibraryDocsTool(
-                    workingDirectory = project.basePath ?: System.getProperty("user.dir"),
-                    sessionId = sessionId,
-                    hookManager = hookManager
-                )
-            )
-            if (SubagentTool.LOAD_SKILL in selected) tool(
-                ConfirmingLoadSkillTool(
-                    LoadSkillTool(
-                        project = project,
-                        sessionId = sessionId,
-                        hookManager = hookManager
-                    ),
-                    project = project
-                ) { name, details ->
-                    approveToolCall?.invoke(name, details) ?: false
-                }
-            )
-            if (SubagentTool.MCP in selected && mcpContext?.hasSelection() == true && mcpContext.conversationId != null) {
-                contextService.get(sessionId)?.let { context ->
-                    McpDynamicToolRegistry.createTools(context) { name, details ->
-                        approveToolCall?.invoke(name, details) ?: false
-                    }.forEach { tool(it) }
-                }
-            }
-            if (SubagentTool.BASH in selected) {
-                tool(
-                    BashTool(
-                        project,
-                        confirmationHandler = bashConfirmationHandler,
-                        sessionId = sessionId,
-                        hookManager = hookManager
-                    )
-                )
-            }
-            tool(ExitTool)
-        }
+        return BuiltInToolRegistry.createSubagentRegistry(
+            project = project,
+            sessionId = sessionId,
+            selected = selected,
+            bashConfirmationHandler = bashConfirmationHandler,
+            hookManager = hookManager,
+            approveToolCall = { name, details -> approveToolCall?.invoke(name, details) ?: false }
+        )
     }
 
     private fun approvalBashHandler(

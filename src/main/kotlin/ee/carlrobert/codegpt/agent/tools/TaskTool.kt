@@ -34,17 +34,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.collections.ArrayDeque
-import kotlin.collections.filter
-import kotlin.collections.filterIsInstance
-import kotlin.collections.filterNot
-import kotlin.collections.firstOrNull
-import kotlin.collections.forEach
-import kotlin.collections.isNotEmpty
-import kotlin.collections.lastOrNull
-import kotlin.collections.mapOf
-import kotlin.collections.set
-import kotlin.collections.setOf
-import kotlin.collections.toSet
 
 class TaskTool(
     private val project: Project,
@@ -288,7 +277,7 @@ class TaskTool(
                 onCreditsAvailable = trackingEvents::onCreditsAvailable,
                 tokenCounter = totalTokenCounter,
                 extraBehavior = builtInConfig?.objective?.takeIf { it.isNotBlank() },
-                toolOverrides = builtInConfig?.let { SubagentTool.parse(it.tools) },
+                toolOverrides = builtInConfig?.let { ToolName.parse(it.tools) },
                 hookManager = hookManager
             )
         }

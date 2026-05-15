@@ -5,197 +5,229 @@ import ai.koog.serialization.JSONObject
 import ai.koog.serialization.TypeToken
 import ai.koog.serialization.typeToken
 import ee.carlrobert.codegpt.agent.tools.*
-import ee.carlrobert.codegpt.agent.tools.ide.DebugSessionControlTool
+import ee.carlrobert.codegpt.agent.tools.ide.*
 import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.ToolApprovalType
 
-enum class ToolName(val id: String, val aliases: Set<String> = emptySet()) {
-    READ(ReadTool.NAME, setOf("ReadFile")),
-    WRITE(WriteTool.NAME, setOf("WriteFile")),
-    EDIT(EditTool.NAME, setOf("Replace", "ReplaceText")),
-    BASH(BashTool.NAME, setOf("Execute", "Terminal", "RunShellCommand")),
-    BASH_OUTPUT(BashOutputTool.NAME),
-    KILL_SHELL(KillShellTool.NAME),
-    INTELLIJ_SEARCH(
-        IntelliJSearchTool.NAME,
-        setOf("Search", "ListDirectory", "Glob", "Grep", "GrepSearch")
-    ),
-    DIAGNOSTICS(DiagnosticsTool.NAME),
-    WEB_SEARCH(WebSearchTool.NAME, setOf("GoogleWebSearch")),
-    WEB_FETCH(WebFetchTool.NAME),
-    MCP(McpTool.NAME),
-    RESOLVE_LIBRARY_ID(ResolveLibraryIdTool.NAME),
-    GET_LIBRARY_DOCS(GetLibraryDocsTool.NAME),
-    LOAD_SKILL(LoadSkillTool.NAME),
-    TASK(TaskTool.NAME),
-    ASK_USER_QUESTION(AskUserQuestionTool.NAME),
-    TODO_WRITE(TodoWriteTool.NAME, setOf("TodoWriteTool")),
-    DEBUG_SESSION_CONTROL(DebugSessionControlTool.NAME),
-    EXIT("Exit");
-}
-
-data class ToolSpec<TArgs, TResult>(
-    val name: ToolName,
+enum class ToolName(
+    val id: String,
     val argsType: TypeToken,
     val resultType: TypeToken,
+    val aliases: Set<String> = emptySet(),
+    val displayName: String = id,
+    val isWrite: Boolean = false,
+    val subagentSelectable: Boolean = true,
+    val alwaysIncludeInSubagent: Boolean = false,
     val approvalType: ToolApprovalType = ToolApprovalType.GENERIC
-)
+) {
+    READ(
+        id = ReadTool.NAME,
+        argsType = typeToken<ReadTool.Args>(),
+        resultType = typeToken<ReadTool.Result>(),
+        aliases = setOf("ReadFile"),
+        displayName = "Read"
+    ),
+    WRITE(
+        id = WriteTool.NAME,
+        argsType = typeToken<WriteTool.Args>(),
+        resultType = typeToken<WriteTool.Result>(),
+        aliases = setOf("WriteFile"),
+        displayName = "Write",
+        isWrite = true,
+        approvalType = ToolApprovalType.WRITE
+    ),
+    EDIT(
+        id = EditTool.NAME,
+        argsType = typeToken<EditTool.Args>(),
+        resultType = typeToken<EditTool.Result>(),
+        aliases = setOf("Replace", "ReplaceText"),
+        displayName = "Edit",
+        isWrite = true,
+        approvalType = ToolApprovalType.EDIT
+    ),
+    BASH(
+        id = BashTool.NAME,
+        argsType = typeToken<BashTool.Args>(),
+        resultType = typeToken<BashTool.Result>(),
+        aliases = setOf("Execute", "Terminal", "RunShellCommand"),
+        displayName = "Bash",
+        isWrite = true,
+        approvalType = ToolApprovalType.BASH
+    ),
+    BASH_OUTPUT(
+        id = BashOutputTool.NAME,
+        argsType = typeToken<BashOutputTool.Args>(),
+        resultType = typeToken<BashOutputTool.Result>(),
+        displayName = "BashOutput"
+    ),
+    KILL_SHELL(
+        id = KillShellTool.NAME,
+        argsType = typeToken<KillShellTool.Args>(),
+        resultType = typeToken<KillShellTool.Result>(),
+        displayName = "KillShell"
+    ),
+    INTELLIJ_SEARCH(
+        id = IntelliJSearchTool.NAME,
+        argsType = typeToken<IntelliJSearchTool.Args>(),
+        resultType = typeToken<IntelliJSearchTool.Result>(),
+        aliases = setOf("Search", "ListDirectory", "Glob", "Grep", "GrepSearch"),
+        displayName = "IntelliJSearch"
+    ),
+    DIAGNOSTICS(
+        id = DiagnosticsTool.NAME,
+        argsType = typeToken<DiagnosticsTool.Args>(),
+        resultType = typeToken<DiagnosticsTool.Result>(),
+        displayName = "Diagnostics"
+    ),
+    WEB_SEARCH(
+        id = WebSearchTool.NAME,
+        argsType = typeToken<WebSearchTool.Args>(),
+        resultType = typeToken<WebSearchTool.Result>(),
+        aliases = setOf("GoogleWebSearch"),
+        displayName = "WebSearch"
+    ),
+    WEB_FETCH(
+        id = WebFetchTool.NAME,
+        argsType = typeToken<WebFetchTool.Args>(),
+        resultType = typeToken<WebFetchTool.Result>(),
+        displayName = "WebFetch"
+    ),
+    MCP(
+        id = McpTool.NAME,
+        argsType = typeToken<McpTool.Args>(),
+        resultType = typeToken<McpTool.Result>(),
+        displayName = "MCP"
+    ),
+    RESOLVE_LIBRARY_ID(
+        id = ResolveLibraryIdTool.NAME,
+        argsType = typeToken<ResolveLibraryIdTool.Args>(),
+        resultType = typeToken<ResolveLibraryIdTool.Result>(),
+        displayName = "ResolveLibraryId"
+    ),
+    GET_LIBRARY_DOCS(
+        id = GetLibraryDocsTool.NAME,
+        argsType = typeToken<GetLibraryDocsTool.Args>(),
+        resultType = typeToken<GetLibraryDocsTool.Result>(),
+        displayName = "GetLibraryDocs"
+    ),
+    LOAD_SKILL(
+        id = LoadSkillTool.NAME,
+        argsType = typeToken<LoadSkillTool.Args>(),
+        resultType = typeToken<LoadSkillTool.Result>(),
+        displayName = "LoadSkill"
+    ),
+    TASK(
+        id = TaskTool.NAME,
+        argsType = typeToken<TaskTool.Args>(),
+        resultType = typeToken<TaskTool.Result>(),
+        displayName = "Task",
+        subagentSelectable = false
+    ),
+    ASK_USER_QUESTION(
+        id = AskUserQuestionTool.NAME,
+        argsType = typeToken<AskUserQuestionTool.Args>(),
+        resultType = typeToken<AskUserQuestionTool.Result>(),
+        displayName = "AskUserQuestion",
+        subagentSelectable = false
+    ),
+    TODO_WRITE(
+        id = TodoWriteTool.NAME,
+        argsType = typeToken<TodoWriteTool.Args>(),
+        resultType = typeToken<String>(),
+        aliases = setOf("TodoWriteTool"),
+        displayName = "TodoWrite"
+    ),
+    GET_RUN_CONFIGURATIONS(
+        id = GetRunConfigurationsTool.NAME,
+        argsType = typeToken<GetRunConfigurationsTool.Args>(),
+        resultType = typeToken<GetRunConfigurationsTool.Result>(),
+        aliases = setOf("GetRunConfigurations"),
+        displayName = "GetRunConfigurations"
+    ),
+    EXECUTE_RUN_CONFIGURATION(
+        id = ExecuteRunConfigurationTool.NAME,
+        argsType = typeToken<ExecuteRunConfigurationTool.Args>(),
+        resultType = typeToken<ExecuteRunConfigurationTool.Result>(),
+        aliases = setOf("ExecuteRunConfiguration"),
+        displayName = "ExecuteRunConfiguration",
+        isWrite = true
+    ),
+    GET_RUN_OUTPUT(
+        id = GetRunOutputTool.NAME,
+        argsType = typeToken<GetRunOutputTool.Args>(),
+        resultType = typeToken<GetRunOutputTool.Result>(),
+        aliases = setOf("GetRunOutput"),
+        displayName = "GetRunOutput"
+    ),
+    GET_DEBUG_SESSIONS(
+        id = GetDebugSessionsTool.NAME,
+        argsType = typeToken<GetDebugSessionsTool.Args>(),
+        resultType = typeToken<GetDebugSessionsTool.Result>(),
+        aliases = setOf("GetDebugSessions"),
+        displayName = "GetDebugSessions"
+    ),
+    GET_BREAKPOINTS(
+        id = GetBreakpointsTool.NAME,
+        argsType = typeToken<GetBreakpointsTool.Args>(),
+        resultType = typeToken<GetBreakpointsTool.Result>(),
+        aliases = setOf("GetBreakpoints"),
+        displayName = "GetBreakpoints"
+    ),
+    BREAKPOINT(
+        id = BreakpointTool.NAME,
+        argsType = typeToken<BreakpointTool.Args>(),
+        resultType = typeToken<BreakpointTool.Result>(),
+        aliases = setOf("Breakpoint", "CreateBreakpoint"),
+        displayName = "Breakpoint",
+        isWrite = true
+    ),
+    DEBUG_SESSION_CONTROL(
+        id = DebugSessionControlTool.NAME,
+        argsType = typeToken<DebugSessionControlTool.Args>(),
+        resultType = typeToken<DebugSessionControlTool.Result>(),
+        displayName = "DebugSessionControl",
+        isWrite = true
+    ),
+    EXIT(
+        id = "Exit",
+        argsType = typeToken<Unit>(),
+        resultType = typeToken<Unit>(),
+        displayName = "Exit",
+        subagentSelectable = false,
+        alwaysIncludeInSubagent = true
+    );
 
-object ToolSpecs {
-    fun coerceArgsForUi(toolName: String, args: Any?): Any? = args
+    companion object {
+        private val subagentTools = entries.filter { it.subagentSelectable }
+        val readOnly: List<ToolName> = subagentTools.filterNot { it.isWrite }
+        val write: List<ToolName> = subagentTools.filter { it.isWrite }
 
-    fun coerceResultForUi(toolName: String, result: Any?): Any? = result
-
-    private val specsByName: Map<String, ToolSpec<*, *>> = buildMap {
-        fun register(spec: ToolSpec<*, *>) {
-            put(spec.name.id.lowercase(), spec)
-            spec.name.aliases.forEach { alias ->
-                put(alias.lowercase(), spec)
+        private val byNormalizedName: Map<String, ToolName> = buildMap {
+            ToolName.entries.forEach { tool ->
+                put(normalize(tool.id), tool)
+                put(normalize(tool.displayName), tool)
+                tool.aliases.forEach { alias -> put(normalize(alias), tool) }
             }
         }
 
-        register(
-            ToolSpec<ReadTool.Args, ReadTool.Result>(
-                ToolName.READ,
-                typeToken<ReadTool.Args>(),
-                typeToken<ReadTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<WriteTool.Args, WriteTool.Result>(
-                ToolName.WRITE,
-                typeToken<WriteTool.Args>(),
-                typeToken<WriteTool.Result>(),
-                ToolApprovalType.WRITE
-            )
-        )
-        register(
-            ToolSpec<EditTool.Args, EditTool.Result>(
-                ToolName.EDIT,
-                typeToken<EditTool.Args>(),
-                typeToken<EditTool.Result>(),
-                ToolApprovalType.EDIT
-            )
-        )
-        register(
-            ToolSpec<BashTool.Args, BashTool.Result>(
-                ToolName.BASH,
-                typeToken<BashTool.Args>(),
-                typeToken<BashTool.Result>(),
-                ToolApprovalType.BASH
-            )
-        )
-        register(
-            ToolSpec<BashOutputTool.Args, BashOutputTool.Result>(
-                ToolName.BASH_OUTPUT,
-                typeToken<BashOutputTool.Args>(),
-                typeToken<BashOutputTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<KillShellTool.Args, KillShellTool.Result>(
-                ToolName.KILL_SHELL,
-                typeToken<KillShellTool.Args>(),
-                typeToken<KillShellTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<IntelliJSearchTool.Args, IntelliJSearchTool.Result>(
-                ToolName.INTELLIJ_SEARCH,
-                typeToken<IntelliJSearchTool.Args>(),
-                typeToken<IntelliJSearchTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<DiagnosticsTool.Args, DiagnosticsTool.Result>(
-                ToolName.DIAGNOSTICS,
-                typeToken<DiagnosticsTool.Args>(),
-                typeToken<DiagnosticsTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<WebSearchTool.Args, WebSearchTool.Result>(
-                ToolName.WEB_SEARCH,
-                typeToken<WebSearchTool.Args>(),
-                typeToken<WebSearchTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<WebFetchTool.Args, WebFetchTool.Result>(
-                ToolName.WEB_FETCH,
-                typeToken<WebFetchTool.Args>(),
-                typeToken<WebFetchTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<McpTool.Args, McpTool.Result>(
-                ToolName.MCP,
-                typeToken<McpTool.Args>(),
-                typeToken<McpTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<ResolveLibraryIdTool.Args, ResolveLibraryIdTool.Result>(
-                ToolName.RESOLVE_LIBRARY_ID,
-                typeToken<ResolveLibraryIdTool.Args>(),
-                typeToken<ResolveLibraryIdTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<GetLibraryDocsTool.Args, GetLibraryDocsTool.Result>(
-                ToolName.GET_LIBRARY_DOCS,
-                typeToken<GetLibraryDocsTool.Args>(),
-                typeToken<GetLibraryDocsTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<LoadSkillTool.Args, LoadSkillTool.Result>(
-                ToolName.LOAD_SKILL,
-                typeToken<LoadSkillTool.Args>(),
-                typeToken<LoadSkillTool.Result>(),
-                ToolApprovalType.GENERIC
-            )
-        )
-        register(
-            ToolSpec<TaskTool.Args, TaskTool.Result>(
-                ToolName.TASK,
-                typeToken<TaskTool.Args>(),
-                typeToken<TaskTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<AskUserQuestionTool.Args, AskUserQuestionTool.Result>(
-                ToolName.ASK_USER_QUESTION,
-                typeToken<AskUserQuestionTool.Args>(),
-                typeToken<AskUserQuestionTool.Result>()
-            )
-        )
-        register(
-            ToolSpec<TodoWriteTool.Args, String>(
-                ToolName.TODO_WRITE,
-                typeToken<TodoWriteTool.Args>(),
-                typeToken<String>()
-            )
-        )
-        register(
-            ToolSpec<DebugSessionControlTool.Args, DebugSessionControlTool.Result>(
-                ToolName.DEBUG_SESSION_CONTROL,
-                typeToken<DebugSessionControlTool.Args>(),
-                typeToken<DebugSessionControlTool.Result>(),
-                ToolApprovalType.GENERIC
-            )
-        )
-        register(
-            ToolSpec<Unit, Unit>(
-                ToolName.EXIT,
-                typeToken<Unit>(),
-                typeToken<Unit>()
-            )
-        )
+        fun fromString(value: String): ToolName? = byNormalizedName[normalize(value)]
+
+        fun parse(values: Collection<String>): Set<ToolName> {
+            return values.mapNotNull(::fromString).filterTo(linkedSetOf()) { it.subagentSelectable }
+        }
+
+        fun toStoredValues(tools: Collection<ToolName>): List<String> {
+            val selected = tools.toSet()
+            return subagentTools.filter { it in selected }.map { it.id }
+        }
+
+        private fun normalize(value: String): String {
+            return value.lowercase().filter { it.isLetterOrDigit() }
+        }
     }
+}
 
-    fun find(toolName: String): ToolSpec<*, *>? = specsByName[toolName.lowercase()]
-
-    fun findName(toolName: String): ToolName? = find(toolName)?.name
+object ToolSpecs {
+    fun find(toolName: String): ToolName? = ToolName.fromString(toolName)
 
     fun approvalTypeFor(toolName: String): ToolApprovalType =
         find(toolName)?.approvalType ?: ToolApprovalType.GENERIC
@@ -244,7 +276,7 @@ object ToolSpecs {
             koogJsonSerializer.decodeFromString<Any>(rawPayload, type)
         }.recoverCatching {
             val normalizedPayload = normalizeToolArgumentsJson(rawPayload) ?: throw it
-            koogJsonSerializer.decodeFromString<Any>(normalizedPayload, type)
+            koogJsonSerializer.decodeFromString(normalizedPayload, type)
         }.getOrNull()
     }
 }

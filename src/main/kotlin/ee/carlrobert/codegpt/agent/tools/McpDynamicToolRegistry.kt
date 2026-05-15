@@ -4,7 +4,6 @@ import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolDescriptor
 import ai.koog.serialization.typeToken
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.thisLogger
 import ee.carlrobert.codegpt.agent.AgentMcpContext
 import ee.carlrobert.codegpt.mcp.*
 import io.modelcontextprotocol.client.McpSyncClient
@@ -14,8 +13,6 @@ import java.util.*
 import ee.carlrobert.codegpt.mcp.McpTool as SessionMcpTool
 
 object McpDynamicToolRegistry {
-    private val logger = thisLogger()
-
     fun createTools(
         context: AgentMcpContext,
         approve: suspend (name: String, details: String) -> Boolean
@@ -83,6 +80,14 @@ private class SessionBoundMcpTool(
         }
 
         val sessionManager = service<McpSessionManager>()
+        val clientKey = "$conversationId:$serverId"
+        val existingClient = runCatching {
+            sessionManager.ensureClientConnected(clientKey).get()
+        }.getOrNull()
+        if (existingClient != null) {
+            return runTool(existingClient, args)
+        }
+
         val attachment = runCatching {
             sessionManager.attachServerToSession(conversationId, serverId).get()
         }.getOrElse { error ->
@@ -101,14 +106,6 @@ private class SessionBoundMcpTool(
             ?: return errorResult("MCP server '$serverName' is not connected")
 
         return runTool(client, args)
-    }
-
-    fun encodeResultToString(result: McpTool.Result): String {
-        return if (result.success || result.output.startsWith("Error:", ignoreCase = true)) {
-            result.output
-        } else {
-            "Error: ${result.output}"
-        }
     }
 
     override fun toDisplayArgs(args: JsonObject): McpTool.Args {

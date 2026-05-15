@@ -4,10 +4,7 @@ import ai.koog.agents.core.agent.AIAgentService
 import ai.koog.agents.core.agent.GraphAIAgentService
 import ai.koog.agents.core.agent.config.AIAgentConfig
 import ai.koog.agents.core.agent.context.RollbackStrategy
-import ai.koog.agents.core.tools.Tool
 import ai.koog.agents.core.tools.ToolRegistry
-import ai.koog.agents.ext.tool.ExitTool
-import ai.koog.agents.ext.tool.shell.ShellCommandConfirmation
 import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.agents.features.tokenizer.feature.MessageTokenizer
 import ai.koog.agents.features.tracing.feature.Tracing
@@ -27,8 +24,7 @@ import ee.carlrobert.codegpt.agent.strategy.CODE_AGENT_COMPRESSION
 import ee.carlrobert.codegpt.agent.strategy.HistoryCompressionConfig
 import ee.carlrobert.codegpt.agent.strategy.SingleRunStrategyProvider
 import ee.carlrobert.codegpt.agent.strategy.buildHistoryTooBigPredicate
-import ee.carlrobert.codegpt.agent.tools.*
-import ee.carlrobert.codegpt.agent.tools.ide.*
+import ee.carlrobert.codegpt.agent.tools.McpAgentToolMarker
 import ee.carlrobert.codegpt.settings.configuration.ConfigurationSettings
 import ee.carlrobert.codegpt.settings.hooks.HookEventType
 import ee.carlrobert.codegpt.settings.hooks.HookManager
@@ -37,7 +33,6 @@ import ee.carlrobert.codegpt.settings.models.ModelSettings
 import ee.carlrobert.codegpt.settings.service.FeatureType
 import ee.carlrobert.codegpt.settings.service.ServiceType
 import ee.carlrobert.codegpt.settings.service.custom.CustomServicesSettings
-import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.BashPayload
 import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.ToolApprovalRequest
 import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.ToolApprovalType
 import ee.carlrobert.codegpt.util.ReasoningFrameTextAdapter
@@ -339,85 +334,16 @@ object ProxyAIAgent {
         sessionId: String,
         parentModelSelection: ModelSelection,
         hookManager: HookManager
-    ): ToolRegistry {
-        val workingDirectory = project.basePath ?: System.getProperty("user.dir")
-        val contextService = project.service<AgentMcpContextService>()
-        val standardApproval = approvalHandler(events)
-        val writeApproval = writeApprovalHandler(events)
-        val genericApproval = genericApprovalHandler(events)
-        return ToolRegistry {
-            tool(ReadTool(project, sessionId, hookManager))
-            tool(ConfirmingEditTool(EditTool(project, sessionId, hookManager), standardApproval))
-            tool(ConfirmingWriteTool(WriteTool(project, sessionId, hookManager), writeApproval))
-            tool(
-                ConfirmingExecuteRunConfigurationTool(
-                    ExecuteRunConfigurationTool(project, sessionId, hookManager),
-                    genericApproval
-                )
-            )
-            tool(
-                ConfirmingBreakpointTool(
-                    BreakpointTool(project, sessionId, hookManager),
-                    genericApproval
-                )
-            )
-            tool(
-                ConfirmingDebugSessionControlTool(
-                    DebugSessionControlTool(project, sessionId, hookManager),
-                    genericApproval
-                )
-            )
-            tool(GetRunOutputTool(project, sessionId, hookManager))
-            tool(GetRunConfigurationsTool(project, sessionId, hookManager))
-            tool(GetDebugSessionsTool(project, sessionId, hookManager))
-            tool(GetBreakpointsTool(project, sessionId, hookManager))
-            tool(TodoWriteTool(project, sessionId, hookManager))
-            tool(AskUserQuestionTool(workingDirectory, sessionId, hookManager, events))
-            createMcpTools(sessionId, contextService, genericApproval).forEach { mcpTool ->
-                tool(mcpTool)
-            }
-            tool(ExitTool)
-            tool(IntelliJSearchTool(project, sessionId, hookManager))
-            tool(DiagnosticsTool(project, sessionId, hookManager))
-            tool(WebSearchTool(workingDirectory, sessionId, hookManager))
-            tool(WebFetchTool(workingDirectory, sessionId, hookManager))
-            tool(BashOutputTool(workingDirectory, sessionId, hookManager))
-            tool(KillShellTool(workingDirectory, sessionId, hookManager))
-            tool(ResolveLibraryIdTool(workingDirectory, sessionId, hookManager))
-            tool(GetLibraryDocsTool(workingDirectory, sessionId, hookManager))
-            tool(
-                ConfirmingLoadSkillTool(
-                    LoadSkillTool(project, sessionId, hookManager),
-                    project
-                ) { name, details -> genericApproval(name, details) }
-            )
-            tool(
-                BashTool(
-                    project = project,
-                    confirmationHandler = { args ->
-                        try {
-                            val approved = events.approveToolCall(
-                                ToolApprovalRequest(
-                                    ToolApprovalType.BASH,
-                                    "Run shell command?",
-                                    args.command,
-                                    BashPayload(args.command, args.description)
-                                )
-                            )
-                            if (approved) ShellCommandConfirmation.Approved else ShellCommandConfirmation.Denied(
-                                "User rejected the command"
-                            )
-                        } catch (_: Exception) {
-                            ShellCommandConfirmation.Approved
-                        }
-                    },
-                    sessionId = sessionId,
-                    hookManager = hookManager
-                )
-            )
-            tool(TaskTool(project, sessionId, parentModelSelection, events, hookManager))
-        }
-    }
+    ): ToolRegistry = BuiltInToolRegistry.createMainAgentRegistry(
+        project = project,
+        events = events,
+        sessionId = sessionId,
+        parentModelSelection = parentModelSelection,
+        hookManager = hookManager,
+        standardApproval = approvalHandler(events),
+        writeApproval = writeApprovalHandler(events),
+        genericApproval = genericApprovalHandler(events)
+    )
 
     private fun approvalHandler(events: AgentEvents): suspend (String, String) -> Boolean =
         approvalHandler(events, ToolSpecs::approvalTypeFor)
@@ -449,18 +375,6 @@ object ProxyAIAgent {
                 fallback = false
             )
         }
-    }
-
-    private fun createMcpTools(
-        sessionId: String,
-        contextService: AgentMcpContextService,
-        approve: suspend (String, String) -> Boolean
-    ): List<Tool<*, *>> {
-        val context = contextService.get(sessionId) ?: return emptyList()
-        if (!context.hasSelection() || context.conversationId == null) {
-            return emptyList()
-        }
-        return McpDynamicToolRegistry.createTools(context, approve)
     }
 
     private suspend fun safeApprove(

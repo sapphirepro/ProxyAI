@@ -1,7 +1,7 @@
 package ee.carlrobert.codegpt.settings.agents
 
 import ee.carlrobert.codegpt.agent.AgentType
-import ee.carlrobert.codegpt.agent.SubagentTool
+import ee.carlrobert.codegpt.agent.ToolName
 import ee.carlrobert.codegpt.settings.ProxyAISubagent
 
 object SubagentDefaults {
@@ -9,8 +9,8 @@ object SubagentDefaults {
     const val GENERAL_ID = 2
 
     fun defaults(): List<ProxyAISubagent> {
-        val explorerTools = SubagentTool.toStoredValues(SubagentTool.readOnly + SubagentTool.BASH)
-        val generalTools = SubagentTool.toStoredValues(SubagentTool.entries)
+        val explorerTools = ToolName.toStoredValues(ToolName.readOnly + ToolName.BASH)
+        val generalTools = ToolName.toStoredValues(ToolName.entries)
         return listOf(
             ProxyAISubagent(
                 id = EXPLORER_ID,

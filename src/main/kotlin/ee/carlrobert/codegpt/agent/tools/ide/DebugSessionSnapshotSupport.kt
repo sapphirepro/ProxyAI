@@ -47,7 +47,7 @@ data class DebugSessionSnapshot(
 
 internal object DebugSessionSnapshotSupport {
     private const val MAX_VARIABLES = 25
-    private const val VALUE_TIMEOUT_MS = 1500L
+    private const val VALUE_TIMEOUT_MS = 5000L
     private val logger = thisLogger()
 
     fun snapshot(session: XDebugSession, includeVariables: Boolean = true): DebugSessionSnapshot {
@@ -246,7 +246,10 @@ internal object DebugSessionSnapshotSupport {
         }
 
         fun awaitResults(): List<DebugVariableInfo> {
-            completionLatch.await(VALUE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            val completed = completionLatch.await(VALUE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!completed) {
+                logger.debug("Timed out collecting debug variables after ${VALUE_TIMEOUT_MS}ms")
+            }
             return variables.toList()
         }
 

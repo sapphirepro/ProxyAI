@@ -15,7 +15,7 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
-import ee.carlrobert.codegpt.agent.SubagentTool
+import ee.carlrobert.codegpt.agent.ToolName
 import ee.carlrobert.codegpt.agent.external.ExternalAcpAgents
 import ee.carlrobert.codegpt.agent.external.ExternalAcpAgentService
 import ee.carlrobert.codegpt.settings.service.ServiceType
@@ -42,7 +42,7 @@ data class SubagentDetails(
     val id: Int,
     var title: String,
     var description: String,
-    var tools: MutableSet<SubagentTool>,
+    var tools: MutableSet<ToolName>,
     var provider: ServiceType? = null,
     var model: String? = null,
     var externalAgentId: String? = null,
@@ -51,8 +51,8 @@ data class SubagentDetails(
 
 class SubagentDetailsPanel(
     private val project: Project,
-    private val readOnlyTools: List<SubagentTool>,
-    private val writeTools: List<SubagentTool>
+    private val readOnlyTools: List<ToolName>,
+    private val writeTools: List<ToolName>
 ) {
     private companion object {
         const val TOOLS_CARD = "tools"

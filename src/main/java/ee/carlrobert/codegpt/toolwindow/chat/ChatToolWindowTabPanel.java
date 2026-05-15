@@ -1,6 +1,7 @@
 package ee.carlrobert.codegpt.toolwindow.chat;
 
 import static ee.carlrobert.codegpt.ui.UIUtil.createScrollPaneWithSmartScroller;
+import static java.util.stream.Collectors.toCollection;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
@@ -35,6 +36,7 @@ import ee.carlrobert.codegpt.conversations.ConversationService;
 import ee.carlrobert.codegpt.conversations.message.Message;
 import ee.carlrobert.codegpt.mcp.McpResolutionResult;
 import ee.carlrobert.codegpt.mcp.McpSelectionResolver;
+import ee.carlrobert.codegpt.mcp.McpSessionAttachment;
 import ee.carlrobert.codegpt.mcp.McpTagStatusUpdater;
 import ee.carlrobert.codegpt.psistructure.PsiStructureProvider;
 import ee.carlrobert.codegpt.psistructure.models.ClassStructure;
@@ -295,8 +297,12 @@ public class ChatToolWindowTabPanel implements Disposable {
     McpResolutionResult mcpResolution = ApplicationManager.getApplication()
         .getService(McpSelectionResolver.class)
         .ensureConnected(conversation.getId(), selectedTags);
-    var mcpTools = new ArrayList<>(mcpResolution.getTools());
-    var mcpServerIds = new ArrayList<>(mcpResolution.getConnectedServerIds());
+    var mcpTools = mcpResolution.getAttachments().stream()
+        .flatMap(attachment -> attachment.getAvailableTools().stream())
+        .collect(toCollection(ArrayList::new));
+    var mcpServerIds = mcpResolution.getAttachments().stream()
+        .map(McpSessionAttachment::getServerId)
+        .collect(toCollection(ArrayList::new));
 
     if (!mcpTools.isEmpty()) {
       builder.mcpTools(mcpTools)

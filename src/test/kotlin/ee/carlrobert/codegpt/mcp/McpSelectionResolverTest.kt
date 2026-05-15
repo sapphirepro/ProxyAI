@@ -18,9 +18,7 @@ class McpSelectionResolverTest : IntegrationTest() {
 
         val resolution = resolver.ensureConnected(conversation.id, selectedTags)
 
-        assertThat(resolution.tools).isEmpty()
-        assertThat(resolution.connectedServerIds).isEmpty()
-        assertThat(resolution.failedServerIds).containsKeys("missing-1", "missing-2")
+        assertThat(resolution.attachments).isEmpty()
     }
 
     fun testSelectedServerIdsOnlyReturnsSelectedMcpTags() {

@@ -1,37 +1,39 @@
 package ee.carlrobert.codegpt.settings.agents.form
 
-import com.intellij.ui.ToolbarDecorator
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.ui.DialogWrapper
-import com.intellij.openapi.ui.ValidationInfo
-import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBTextField
-import com.intellij.ui.dsl.builder.*
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
-import ee.carlrobert.codegpt.ui.OverlayUtil
+import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.ui.ToolbarDecorator
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
+import com.intellij.ui.components.JBTextField
+import com.intellij.ui.dsl.builder.COLUMNS_LARGE
+import com.intellij.ui.dsl.builder.columns
+import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
-import ee.carlrobert.codegpt.agent.SubagentTool
+import ee.carlrobert.codegpt.agent.ToolName
+import ee.carlrobert.codegpt.settings.ProxyAISettingsService
 import ee.carlrobert.codegpt.settings.ProxyAISubagent
 import ee.carlrobert.codegpt.settings.ProxyAISubagentTarget
-import ee.carlrobert.codegpt.settings.ProxyAISettingsService
 import ee.carlrobert.codegpt.settings.agents.SubagentDefaults
+import ee.carlrobert.codegpt.ui.OverlayUtil
 import java.awt.Dimension
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
 
 class SubagentsForm(private val project: Project) {
-    private val readOnlyTools = SubagentTool.readOnly
-    private val writeTools = SubagentTool.write
+    private val readOnlyTools = ToolName.readOnly
+    private val writeTools = ToolName.write
     private val settingsService = project.service<ProxyAISettingsService>()
 
     private val listModel = DefaultListModel<SubagentDetails>()
@@ -68,7 +70,11 @@ class SubagentsForm(private val project: Project) {
                 val idx = list.selectedIndex
                 idx >= 0 && !isBuiltIn(listModel.getElementAt(idx))
             }
-            .addExtraAction(object : AnAction("Generate", "Generate from natural language", AllIcons.Actions.IntentionBulb) {
+            .addExtraAction(object : AnAction(
+                "Generate",
+                "Generate from natural language",
+                AllIcons.Actions.IntentionBulb
+            ) {
                 override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
                 override fun actionPerformed(e: AnActionEvent) {
                     val input = showGeneratePromptDialog() ?: return
@@ -78,19 +84,22 @@ class SubagentsForm(private val project: Project) {
                     var generated: ee.carlrobert.codegpt.settings.agents.GeneratedSubagent? = null
                     ProgressManager.getInstance().runProcessWithProgressSynchronously({
                         try {
-                            generated = ee.carlrobert.codegpt.settings.agents.SubagentGenerator.generateBlocking(input)
+                            generated =
+                                ee.carlrobert.codegpt.settings.agents.SubagentGenerator.generateBlocking(
+                                    input
+                                )
                         } catch (t: Throwable) {
                             error = t.message ?: "Generation failed"
                         }
-                    }, "Generating subagent...", true, project)
+                    }, "Generating Subagent...", true, project)
 
                     val tools = suggestTools(input)
                     runInEdt(ModalityState.any()) {
                         if (generated != null) {
                             val d = SubagentDetails(
                                 nextId(),
-                                generated!!.title,
-                                generated!!.description,
+                                generated.title,
+                                generated.description,
                                 tools
                             )
                             listModel.addElement(d)
@@ -98,7 +107,10 @@ class SubagentsForm(private val project: Project) {
                             detailsPanel.updateData(d)
                             OverlayUtil.showNotification("Subagent generated.")
                         } else if (error != null) {
-                            OverlayUtil.showNotification("Failed to generate subagent: $error", com.intellij.notification.NotificationType.ERROR)
+                            OverlayUtil.showNotification(
+                                "Failed to generate subagent: $error",
+                                com.intellij.notification.NotificationType.ERROR
+                            )
                         }
                         list.isEnabled = true
                         detailsPanel.setControlsEnabled(true)
@@ -153,7 +165,8 @@ class SubagentsForm(private val project: Project) {
         return settingsService.getSubagents().map { it.toDetails() }
     }
 
-    private fun isBuiltIn(details: SubagentDetails): Boolean = SubagentDefaults.isBuiltInId(details.id)
+    private fun isBuiltIn(details: SubagentDetails): Boolean =
+        SubagentDefaults.isBuiltInId(details.id)
 
     private fun validateEntries(): String? {
         val seen = mutableSetOf<String>()
@@ -189,15 +202,15 @@ class SubagentsForm(private val project: Project) {
 
 private class GenerateSubagentDialog : DialogWrapper(true) {
     private val inputField = JBTextField()
-    
+
     val inputValue: String
         get() = inputField.text
-    
+
     init {
         title = "Generate Subagent"
         init()
     }
-    
+
     override fun createCenterPanel(): JComponent {
         return panel {
             row {
@@ -213,7 +226,7 @@ private class GenerateSubagentDialog : DialogWrapper(true) {
             }
         }
     }
-    
+
     override fun doValidate(): ValidationInfo? {
         return if (inputField.text.trim().isEmpty()) {
             ValidationInfo("Description cannot be empty", inputField)
@@ -221,14 +234,14 @@ private class GenerateSubagentDialog : DialogWrapper(true) {
     }
 }
 
-private fun suggestTools(text: String): MutableSet<SubagentTool> {
+private fun suggestTools(text: String): MutableSet<ToolName> {
     val t = text.lowercase()
-    val selected = SubagentTool.readOnly.toMutableSet()
+    val selected = ToolName.readOnly.toMutableSet()
     if (listOf("write", "edit", "fix", "implement", "change", "modify", "apply").any { it in t }) {
-        selected.addAll(SubagentTool.write)
+        selected.addAll(ToolName.write)
     }
     if (listOf("review", "analyze", "audit", "inspect").any { it in t }) {
-        selected.removeAll(SubagentTool.write.toSet())
+        selected.removeAll(ToolName.write.toSet())
     }
     return selected
 }
@@ -238,7 +251,7 @@ private fun ProxyAISubagent.toDetails(): SubagentDetails {
         id = id,
         title = title,
         description = objective,
-        tools = SubagentTool.parse(tools).toMutableSet(),
+        tools = ToolName.parse(tools).toMutableSet(),
         provider = provider,
         model = model,
         externalAgentId = externalAgentId,
@@ -268,7 +281,7 @@ private fun SubagentDetails.toStored(): ProxyAISubagent {
         id = id,
         title = title,
         objective = description,
-        tools = SubagentTool.toStoredValues(tools),
+        tools = ToolName.toStoredValues(tools),
         target = target,
     )
 }
