@@ -6,8 +6,30 @@ import java.awt.Component
 import javax.swing.Icon
 
 enum class ToolKind {
-    READ, WRITE, EDIT, BASH, BASH_OUTPUT, KILL_SHELL, SEARCH, WEB, TASK, TODO_WRITE, MCP, LIBRARY_RESOLVE, LIBRARY_DOCS, SKILL, ASK_QUESTION, EXIT, DIAGNOSTICS,
-    IDE_RUN_CONFIGURATION, IDE_REFACTORING, IDE_DEBUGGER, IDE_SYMBOL_INFO,
+    READ,
+    WRITE,
+    EDIT,
+    BASH,
+    BASH_OUTPUT,
+    KILL_SHELL,
+    SEARCH,
+    WEB,
+    TASK,
+    TODO_WRITE,
+    MCP,
+    LIBRARY_RESOLVE,
+    LIBRARY_DOCS,
+    SKILL,
+    ASK_QUESTION,
+    EXIT,
+    DIAGNOSTICS,
+    IDE_RUN_CONFIGURATIONS,
+    IDE_EXECUTE_RUN_CONFIGURATION,
+    IDE_BREAKPOINT,
+    IDE_BREAKPOINTS,
+    IDE_DEBUG_SESSIONS,
+    IDE_RUN_OUTPUT,
+    IDE_DEBUG_SESSION_CONTROL,
     OTHER
 }
 
@@ -33,11 +55,28 @@ data class ToolAction(
     val action: (Component) -> Unit
 )
 
+data class FileChangeSnapshot(
+    val beforeText: String,
+    val afterText: String,
+    val isNewFile: Boolean = false
+)
+
+data class ToolCallDiffPreview(
+    val filePath: String,
+    val snapshot: FileChangeSnapshot
+)
+
+enum class ToolCallSecondaryLayout {
+    SINGLE_ROW,
+    STACKED
+}
+
 data class ToolCallDescriptor(
     val kind: ToolKind,
     val icon: Icon?,
     val titlePrefix: String,
     val titleMain: String,
+    val subtitleText: String? = null,
     val tooltip: String?,
     val secondaryBadges: List<Badge> = emptyList(),
     val fileLink: FileLink? = null,
@@ -49,4 +88,6 @@ data class ToolCallDescriptor(
     val prefixColor: JBColor? = null,
     val summary: String? = null,
     val detailText: String? = null,
+    val secondaryLayout: ToolCallSecondaryLayout = ToolCallSecondaryLayout.SINGLE_ROW,
+    val diffPreview: ToolCallDiffPreview? = null,
 )

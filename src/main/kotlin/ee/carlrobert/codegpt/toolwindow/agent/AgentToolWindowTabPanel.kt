@@ -23,16 +23,17 @@ import ee.carlrobert.codegpt.agent.history.AgentCheckpointHistoryService
 import ee.carlrobert.codegpt.agent.history.AgentCheckpointTurnSequencer
 import ee.carlrobert.codegpt.agent.history.CheckpointRef
 import ee.carlrobert.codegpt.agent.rollback.RollbackService
+import ee.carlrobert.codegpt.completions.ToolApprovalMode
 import ee.carlrobert.codegpt.conversations.Conversation
 import ee.carlrobert.codegpt.conversations.message.Message
 import ee.carlrobert.codegpt.conversations.message.QueuedMessage
 import ee.carlrobert.codegpt.mcp.McpTagStatusUpdater
 import ee.carlrobert.codegpt.psistructure.PsiStructureProvider
-import ee.carlrobert.codegpt.completions.ToolApprovalMode
 import ee.carlrobert.codegpt.settings.models.ModelSettings
 import ee.carlrobert.codegpt.settings.service.FeatureType
 import ee.carlrobert.codegpt.toolwindow.ToolWindowInitialState
 import ee.carlrobert.codegpt.toolwindow.agent.ui.*
+import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.FileChangeSnapshot
 import ee.carlrobert.codegpt.toolwindow.chat.MessageBuilder
 import ee.carlrobert.codegpt.toolwindow.chat.editor.actions.CopyAction
 import ee.carlrobert.codegpt.toolwindow.chat.structure.data.PsiStructureRepository
@@ -68,6 +69,13 @@ class AgentToolWindowTabPanel(
     companion object {
         private const val RECOVERED_CONVERSATION_RENDER_BATCH_SIZE = 6
     }
+
+    private data class RecoveredPendingToolCall(
+        val toolName: String,
+        val args: Any,
+        val rawArgs: String,
+        val card: ToolCallCard
+    )
 
     private val scrollablePanel = ChatToolWindowScrollablePanel()
     private val tagManager = TagManager()
@@ -521,6 +529,7 @@ class AgentToolWindowTabPanel(
                     }
 
             val messages = conversation.messages.toList()
+            val fileChangeReconstructor = HistoricalFileChangeReconstructor(project, agentJson)
             var nextIndex = 0
             while (nextIndex < messages.size) {
                 if (!isActive || project.isDisposed) return@withContext
@@ -552,13 +561,17 @@ class AgentToolWindowTabPanel(
                     )
 
                     val renderedInOrder = if (canRenderInOrder) {
-                        renderRecoveredTurnInOrder(responseBody, recoveredTurns[index].events)
+                        renderRecoveredTurnInOrder(
+                            responseBody,
+                            recoveredTurns[index].events,
+                            fileChangeReconstructor
+                        )
                     } else {
                         false
                     }
 
                     if (!renderedInOrder) {
-                        addRecoveredToolCards(responseBody, message)
+                        addRecoveredToolCards(responseBody, message, fileChangeReconstructor)
                         responseBody.withResponse(message.response.orEmpty().stripThinkingBlocks())
                     }
 
@@ -595,14 +608,15 @@ class AgentToolWindowTabPanel(
 
     private fun renderRecoveredTurnInOrder(
         responseBody: ChatMessageResponseBody,
-        events: List<AgentCheckpointTurnSequencer.TurnEvent>
+        events: List<AgentCheckpointTurnSequencer.TurnEvent>,
+        fileChangeReconstructor: HistoricalFileChangeReconstructor
     ): Boolean {
         if (events.isEmpty()) {
             return false
         }
 
-        val pendingById = mutableMapOf<String, ToolCallCard>()
-        val pendingWithoutId = ArrayDeque<ToolCallCard>()
+        val pendingById = mutableMapOf<String, RecoveredPendingToolCall>()
+        val pendingWithoutId = ArrayDeque<RecoveredPendingToolCall>()
         var rendered = false
 
         events.forEach { event ->
@@ -627,13 +641,15 @@ class AgentToolWindowTabPanel(
                     val toolName = event.tool.ifBlank { "Tool" }
                     val rawArgs = event.content
                     val args = parseRecoveredToolArgs(toolName, rawArgs)
-                    val card = createRecoveredToolCard(toolName, args, rawArgs)
+                    val snapshot = fileChangeReconstructor.createSnapshot(toolName, args, rawArgs)
+                    val card = createRecoveredToolCard(toolName, args, rawArgs, snapshot)
                     responseBody.addToolStatusPanel(card)
+                    val pendingCall = RecoveredPendingToolCall(toolName, args, rawArgs, card)
                     val callId = event.id?.takeIf { it.isNotBlank() }
                     if (callId != null) {
-                        pendingById[callId] = card
+                        pendingById[callId] = pendingCall
                     } else {
-                        pendingWithoutId.addLast(card)
+                        pendingWithoutId.addLast(pendingCall)
                     }
                     rendered = true
                 }
@@ -642,17 +658,25 @@ class AgentToolWindowTabPanel(
                     val toolName = event.tool.ifBlank { "Tool" }
                     val rawResult = event.content
                     val parsedResult = parseRecoveredToolResult(toolName, rawResult)
-                    val success = inferRecoveredToolSuccess(parsedResult, rawResult)
-                    val card = event.id
+                    val success = inferRecoveredToolSuccess(toolName, parsedResult, rawResult)
+                    val pendingCall = event.id
                         ?.takeIf { it.isNotBlank() }
                         ?.let { pendingById.remove(it) }
                         ?: pendingWithoutId.pollFirst()
                         ?: run {
-                            val orphan = createRecoveredToolCard(toolName, "", "")
-                            responseBody.addToolStatusPanel(orphan)
-                            orphan
+                            val orphanCard = createRecoveredToolCard(toolName, "", "", null)
+                            responseBody.addToolStatusPanel(orphanCard)
+                            RecoveredPendingToolCall(toolName, "", "", orphanCard)
                         }
-                    card.complete(success, parsedResult ?: rawResult)
+                    pendingCall.card.complete(success, parsedResult ?: rawResult)
+                    if (success) {
+                        fileChangeReconstructor.applySuccessfulResult(
+                            pendingCall.toolName,
+                            pendingCall.args,
+                            pendingCall.rawArgs,
+                            rawResult
+                        )
+                    }
                     rendered = true
                 }
 
@@ -662,7 +686,11 @@ class AgentToolWindowTabPanel(
         return rendered
     }
 
-    private fun addRecoveredToolCards(responseBody: ChatMessageResponseBody, message: Message) {
+    private fun addRecoveredToolCards(
+        responseBody: ChatMessageResponseBody,
+        message: Message,
+        fileChangeReconstructor: HistoricalFileChangeReconstructor
+    ) {
         val toolCalls = message.toolCalls ?: return
         val toolCallResults = message.toolCallResults ?: emptyMap()
 
@@ -670,23 +698,28 @@ class AgentToolWindowTabPanel(
             val toolName = toolCall.function.name ?: return@forEach
             val rawArgs = toolCall.function.arguments.orEmpty()
             val args = parseRecoveredToolArgs(toolName, rawArgs)
-            val card = createRecoveredToolCard(toolName, args, rawArgs)
+            val snapshot = fileChangeReconstructor.createSnapshot(toolName, args, rawArgs)
+            val card = createRecoveredToolCard(toolName, args, rawArgs, snapshot)
             responseBody.addToolStatusPanel(card)
 
             val rawResult = toolCallResults[toolCall.id] ?: return@forEach
             val parsedResult = parseRecoveredToolResult(toolName, rawResult)
-            val success = inferRecoveredToolSuccess(parsedResult, rawResult)
+            val success = inferRecoveredToolSuccess(toolName, parsedResult, rawResult)
             card.complete(success, parsedResult ?: rawResult)
+            if (success) {
+                fileChangeReconstructor.applySuccessfulResult(toolName, args, rawArgs, rawResult)
+            }
         }
     }
 
     private fun createRecoveredToolCard(
         toolName: String,
         args: Any,
-        rawArgs: String
+        rawArgs: String,
+        fileChangeSnapshot: FileChangeSnapshot?
     ): ToolCallCard {
         return try {
-            ToolCallCard(project, toolName, args)
+            ToolCallCard(project, toolName, args, fileChangeSnapshot = fileChangeSnapshot)
         } catch (_: Exception) {
             val fallbackName = "Recovered $toolName"
             val fallbackArgs = rawArgs.ifBlank { "(no arguments)" }
@@ -714,7 +747,19 @@ class AgentToolWindowTabPanel(
         ) ?: payload
     }
 
-    private fun inferRecoveredToolSuccess(parsedResult: Any?, rawResult: String): Boolean {
+    private fun inferRecoveredToolSuccess(
+        toolName: String,
+        parsedResult: Any?,
+        rawResult: String
+    ): Boolean {
+        val supportedTool = HistoricalRollbackCompatibility.resolveSupportedTool(toolName)
+        if (supportedTool != null) {
+            return HistoricalRollbackCompatibility.isSuccessfulResult(
+                supportedTool,
+                rawResult,
+                agentJson
+            )
+        }
         if (parsedResult != null) {
             return parsedResult::class.simpleName != "Error"
         }

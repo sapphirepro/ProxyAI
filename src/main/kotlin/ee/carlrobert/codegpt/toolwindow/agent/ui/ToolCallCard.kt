@@ -3,6 +3,7 @@ package ee.carlrobert.codegpt.toolwindow.agent.ui
 import com.intellij.openapi.project.Project
 import com.intellij.ui.components.JBPanel
 import com.intellij.util.ui.JBUI
+import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.FileChangeSnapshot
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolCallDescriptor
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolCallDescriptorFactory
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolCallView
@@ -13,7 +14,8 @@ class ToolCallCard(
     private val project: Project,
     private var toolName: String,
     private var args: Any?,
-    private val overrideKind: ToolKind? = null
+    private val overrideKind: ToolKind? = null,
+    private val fileChangeSnapshot: FileChangeSnapshot? = null
 ) : JBPanel<ToolCallCard>() {
 
     private val view: ToolCallView
@@ -28,7 +30,8 @@ class ToolCallCard(
             toolName = toolName,
             args = args ?: Unit,
             result = null,
-            overrideKind = overrideKind
+            overrideKind = overrideKind,
+            fileChangeSnapshot = fileChangeSnapshot
         )
         view = ToolCallView(descriptor)
         add(view, BorderLayout.CENTER)
@@ -40,7 +43,8 @@ class ToolCallCard(
             toolName = toolName,
             args = args ?: Unit,
             result = result,
-            overrideKind = overrideKind
+            overrideKind = overrideKind,
+            fileChangeSnapshot = fileChangeSnapshot
         )
         view.refreshDescriptor(updated)
         view.complete(success, result)

@@ -19,11 +19,7 @@ import ee.carlrobert.codegpt.agent.*
 import ee.carlrobert.codegpt.agent.history.CheckpointRef
 import ee.carlrobert.codegpt.agent.rollback.RollbackService
 import ee.carlrobert.codegpt.agent.tools.*
-import ee.carlrobert.codegpt.agent.tools.ide.BreakpointTool
-import ee.carlrobert.codegpt.agent.tools.ide.ExecuteRunConfigurationTool
-import ee.carlrobert.codegpt.agent.tools.ide.GetBreakpointsTool
-import ee.carlrobert.codegpt.agent.tools.ide.GetDebugSessionsTool
-import ee.carlrobert.codegpt.agent.tools.ide.GetRunOutputTool
+import ee.carlrobert.codegpt.agent.tools.ide.*
 import ee.carlrobert.codegpt.completions.ToolApprovalMode
 import ee.carlrobert.codegpt.settings.agents.SubagentRuntimeResolver
 import ee.carlrobert.codegpt.settings.service.ServiceType
@@ -31,6 +27,8 @@ import ee.carlrobert.codegpt.settings.service.codegpt.CodeGPTApiException
 import ee.carlrobert.codegpt.toolwindow.agent.ui.*
 import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.*
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.Badge
+import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.FileChangeSnapshot
+import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolCallDiffPreview
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolKind
 import ee.carlrobert.codegpt.toolwindow.agent.ui.renderer.*
 import ee.carlrobert.codegpt.toolwindow.chat.ui.ChatMessageResponseBody
@@ -67,6 +65,7 @@ class AgentEventHandler(
     }
 
     private val mainToolCards = ConcurrentHashMap<String, ToolCallCard>()
+    private val fileChangeSnapshots = ConcurrentHashMap<String, FileChangeSnapshot>()
     private val pendingToolOutput = ConcurrentHashMap<String, MutableList<ToolOutputLine>>()
     private val scheduledToolOutputFlushes =
         Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
@@ -91,7 +90,13 @@ class AgentEventHandler(
     private var lastWriteArgs: WriteTool.Args? = null
 
     @Volatile
+    private var lastWriteSnapshot: FileChangeSnapshot? = null
+
+    @Volatile
     private var lastEditArgs: EditTool.Args? = null
+
+    @Volatile
+    private var lastEditSnapshot: FileChangeSnapshot? = null
 
     @Volatile
     private var currentRollbackRunId: String? = null
@@ -133,11 +138,14 @@ class AgentEventHandler(
 
     fun resetForNewSubmission() {
         mainToolCards.clear()
+        fileChangeSnapshots.clear()
         pendingToolOutput.clear()
         scheduledToolOutputFlushes.clear()
         currentResponseBody = null
         lastWriteArgs = null
+        lastWriteSnapshot = null
         lastEditArgs = null
+        lastEditSnapshot = null
         currentApproval = null
         approvalQueue.clear()
         currentQuestion = null
@@ -417,74 +425,78 @@ class AgentEventHandler(
     }
 
     override fun onToolStarting(id: String, toolName: String, args: Any?) {
-        val uiArgs = ToolSpecs.coerceArgsForUi(toolName, args)
-        if (toolName == "Tool" && uiArgs == null) {
+        if (toolName == "Tool" && args == null) {
             logger.debug("Deferring placeholder tool card session=$sessionId toolId=$id toolName=$toolName")
             return
         }
 
-        when (uiArgs) {
+        when (args) {
             is TodoWriteTool.Args -> {
                 runInEdt {
                     val inProgressTask =
-                        uiArgs.todos.find { it.status == TodoWriteTool.TodoStatus.IN_PROGRESS }
+                        args.todos.find { it.status == TodoWriteTool.TodoStatus.IN_PROGRESS }
                     if (inProgressTask != null) {
                         showLoading(inProgressTask.activeForm)
                     }
-                    todoListPanel.updateTodos(uiArgs.todos)
+                    todoListPanel.updateTodos(args.todos)
                     todoListPanel.isVisible = true
-                    showMainToolCard(id, toolName, uiArgs)
+                    showMainToolCard(id, toolName, args)
                 }
             }
 
             is TaskTool.Args -> {
                 runInEdt {
                     val host = ensureRunViewForSubagent(id)
-                    host.addEntry(createTaskEntry(id, null, uiArgs))
+                    host.addEntry(createTaskEntry(id, null, args))
                     host.refresh()
                     requestUiRefresh()
                 }
             }
 
             else -> {
-                when (uiArgs) {
-                    is EditTool.Args -> {
-                        trackEditOperation(uiArgs)
+                val fileChangeSnapshot = when (args) {
+                    is EditTool.Args -> captureEditSnapshot(args).also {
+                        fileChangeSnapshots[keyFor(id)] = it
+                        lastEditSnapshot = it
+                        trackEditOperation(args)
                     }
 
-                    is WriteTool.Args -> {
-                        trackWriteOperation(uiArgs)
+                    is WriteTool.Args -> captureWriteSnapshot(args).also {
+                        fileChangeSnapshots[keyFor(id)] = it
+                        lastWriteSnapshot = it
+                        trackWriteOperation(args)
                     }
+
+                    else -> null
                 }
-
                 runInEdt {
-                    showMainToolCard(id, toolName, uiArgs)
+                    showMainToolCard(id, toolName, args, fileChangeSnapshot)
                 }
             }
         }
     }
 
     override fun onToolCompleted(id: String?, toolName: String, result: Any?) {
-        val uiResult = ToolSpecs.coerceResultForUi(toolName, result)
         runInEdt {
-            if (id != null && (toolName == "Task" || uiResult is TaskTool.Result)) {
+            if (id != null && (toolName == "Task" || result is TaskTool.Result)) {
                 val holder = runViewHolder ?: subagentViewHolders.values.firstOrNull { viewHolder ->
                     viewHolder.getItems().any { entry -> entry.id == id }
                 }
-                holder?.completeEntry(id, uiResult)
+                holder?.completeEntry(id, result)
                 holder?.refresh()
             } else if (id != null && mainToolCards.containsKey(keyFor(id))) {
-                val success = uiResult !is ToolError && uiResult != null
-                mainToolCards[keyFor(id)]?.complete(success, uiResult)
+                val success = result !is ToolError && result != null
+                mainToolCards[keyFor(id)]?.complete(success, result)
+                fileChangeSnapshots.remove(keyFor(id))
                 mainToolCards[keyFor(id)]?.getDescriptor()?.let { descriptor ->
                     if (descriptor.kind == ToolKind.OTHER || descriptor.titleMain.isBlank()) {
                         logger.warn(
-                            "Completed generic tool card session=$sessionId toolId=$id toolName=$toolName resultType=${uiResult?.javaClass?.name ?: "null"} title=${descriptor.titleMain}"
+                            "Completed generic tool card session=$sessionId toolId=$id toolName=$toolName resultType=${result?.javaClass?.name ?: "null"} title=${descriptor.titleMain}"
                         )
                     }
                 }
 
-                val bgId = (uiResult as? BashTool.Result)?.bashId
+                val bgId = (result as? BashTool.Result)?.bashId
                 if (bgId == null) {
                     mainToolCards.remove(keyFor(id))
                 } else {
@@ -543,12 +555,16 @@ class AgentEventHandler(
 
                 is WriteTool.Args -> {
                     lastWriteArgs = args
-                    RunEntry.WriteEntry(cid, parentId, args, null)
+                    val snapshot = captureWriteSnapshot(args)
+                    lastWriteSnapshot = snapshot
+                    RunEntry.WriteEntry(cid, parentId, args, null, snapshot)
                 }
 
                 is EditTool.Args -> {
                     lastEditArgs = args
-                    RunEntry.EditEntry(cid, parentId, args, null)
+                    val snapshot = captureEditSnapshot(args)
+                    lastEditSnapshot = snapshot
+                    RunEntry.EditEntry(cid, parentId, args, null, snapshot)
                 }
 
                 is TaskTool.Args -> createTaskEntry(cid, parentId, args)
@@ -611,11 +627,17 @@ class AgentEventHandler(
         }
     }
 
-    private fun showMainToolCard(id: String, toolName: String, uiArgs: Any?) {
+    private fun showMainToolCard(
+        id: String,
+        toolName: String,
+        uiArgs: Any?,
+        fileChangeSnapshot: FileChangeSnapshot? = null
+    ) {
         val key = keyFor(id)
         val existingCard = mainToolCards[key]
         if (existingCard == null) {
-            val card = ToolCallCard(project, toolName, uiArgs)
+            val card =
+                ToolCallCard(project, toolName, uiArgs, fileChangeSnapshot = fileChangeSnapshot)
             mainToolCards[key] = card
             currentResponseBody?.addToolStatusPanel(card)
             requestUiRefresh()
@@ -838,14 +860,19 @@ class AgentEventHandler(
         val payload = request.payload ?: return
         val (path, before, after) = when (payload) {
             is EditPayload -> {
-                val currentContent = getFileContentWithFallback(payload.filePath)
-                val proposed = payload.proposedContent ?: applyStringReplacement(
-                    currentContent,
-                    payload.oldString,
-                    payload.newString,
-                    payload.replaceAll
-                )
-                Triple(payload.filePath, currentContent, proposed)
+                val snapshot = lastEditSnapshot
+                if (snapshot != null) {
+                    Triple(payload.filePath, snapshot.beforeText, snapshot.afterText)
+                } else {
+                    val currentContent = getFileContentWithFallback(payload.filePath)
+                    val proposed = payload.proposedContent ?: applyStringReplacement(
+                        currentContent,
+                        payload.oldString,
+                        payload.newString,
+                        payload.replaceAll
+                    )
+                    Triple(payload.filePath, currentContent, proposed)
+                }
             }
 
             else -> return
@@ -868,14 +895,15 @@ class AgentEventHandler(
             val nonDiffBadges = descriptor.secondaryBadges.filterNot { isDiffBadge(it) }
             descriptor.copy(
                 secondaryBadges = nonDiffBadges + diffBadges,
-                summary = null
+                summary = null,
+                diffPreview = ToolCallDiffPreview(path, FileChangeSnapshot(before, after))
             )
         }
     }
 
     private fun isDiffBadge(badge: Badge): Boolean {
         val text = badge.text
-        return text.startsWith("[+") || text.startsWith("[-") || text.startsWith("[~")
+        return text.startsWith("+") || text.startsWith("-") || text.startsWith("~")
     }
 
     private fun maybeShowNextQuestion() {
@@ -993,6 +1021,7 @@ class AgentEventHandler(
         serviceScope.dispose()
         agentApprovalManager.dispose()
         mainToolCards.clear()
+        fileChangeSnapshots.clear()
         synchronized(toolOutputLock) {
             pendingToolOutput.clear()
             scheduledToolOutputFlushes.clear()
@@ -1088,5 +1117,27 @@ class AgentEventHandler(
         } else {
             rollbackService.trackWrite(sessionId, normalizedPath)
         }
+    }
+
+    private fun captureEditSnapshot(args: EditTool.Args): FileChangeSnapshot {
+        val normalizedPath = args.filePath.replace("\\", "/")
+        val currentContent = getFileContentWithFallback(normalizedPath)
+        val proposedContent = applyStringReplacement(
+            currentContent,
+            args.oldString,
+            args.newString,
+            args.replaceAll
+        )
+        return FileChangeSnapshot(currentContent, proposedContent)
+    }
+
+    private fun captureWriteSnapshot(args: WriteTool.Args): FileChangeSnapshot {
+        val normalizedPath = args.filePath.replace("\\", "/")
+        val beforeContent = getFileContentWithFallback(normalizedPath)
+        return FileChangeSnapshot(
+            beforeText = beforeContent,
+            afterText = args.content,
+            isNewFile = beforeContent.isEmpty() && !java.io.File(normalizedPath).exists()
+        )
     }
 }

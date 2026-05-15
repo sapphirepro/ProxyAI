@@ -103,7 +103,8 @@ class AgentRunDslPanel(
                 args = value.args ?: "",
                 result = value.result,
                 overrideKind = value.kind,
-                summary = summary
+                summary = summary,
+                fileChangeSnapshot = value.fileChangeSnapshot
             )
             val view = ToolCallView(descriptor)
             viewByEntryId[value.id] = view

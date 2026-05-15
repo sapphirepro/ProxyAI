@@ -7,6 +7,7 @@ import ee.carlrobert.codegpt.agent.tools.ide.ExecuteRunConfigurationTool
 import ee.carlrobert.codegpt.agent.tools.ide.GetBreakpointsTool
 import ee.carlrobert.codegpt.agent.tools.ide.GetDebugSessionsTool
 import ee.carlrobert.codegpt.agent.tools.ide.GetRunOutputTool
+import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.FileChangeSnapshot
 import ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor.ToolKind
 
 sealed class RunEntry {
@@ -16,6 +17,7 @@ sealed class RunEntry {
     abstract val toolName: String
     abstract val args: Any?
     abstract val result: Any?
+    open val fileChangeSnapshot: FileChangeSnapshot? = null
     abstract fun withAnyResult(result: Any?): RunEntry
 
     data class ReadEntry(
@@ -83,6 +85,7 @@ sealed class RunEntry {
         override val parentId: String? = null,
         override val args: WriteTool.Args? = null,
         override val result: WriteTool.Result? = null,
+        override val fileChangeSnapshot: FileChangeSnapshot? = null,
     ) : RunEntry() {
         override val kind: ToolKind = ToolKind.WRITE
         override val toolName: String = "Write"
@@ -95,6 +98,7 @@ sealed class RunEntry {
         override val parentId: String? = null,
         override val args: EditTool.Args? = null,
         override val result: EditTool.Result? = null,
+        override val fileChangeSnapshot: FileChangeSnapshot? = null,
     ) : RunEntry() {
         override val kind: ToolKind = ToolKind.EDIT
         override val toolName: String = "Edit"
@@ -169,7 +173,7 @@ sealed class RunEntry {
         override val args: BreakpointTool.Args? = null,
         override val result: BreakpointTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.OTHER
+        override val kind: ToolKind = ToolKind.IDE_BREAKPOINT
         override val toolName: String = "Breakpoint"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? BreakpointTool.Result)
@@ -181,7 +185,7 @@ sealed class RunEntry {
         override val args: GetBreakpointsTool.Args? = null,
         override val result: GetBreakpointsTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.OTHER
+        override val kind: ToolKind = ToolKind.IDE_BREAKPOINTS
         override val toolName: String = "GetBreakpoints"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? GetBreakpointsTool.Result)
@@ -193,7 +197,7 @@ sealed class RunEntry {
         override val args: GetDebugSessionsTool.Args? = null,
         override val result: GetDebugSessionsTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.OTHER
+        override val kind: ToolKind = ToolKind.IDE_DEBUG_SESSIONS
         override val toolName: String = "GetDebugSessions"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? GetDebugSessionsTool.Result)
@@ -205,7 +209,7 @@ sealed class RunEntry {
         override val args: DebugSessionControlTool.Args? = null,
         override val result: DebugSessionControlTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.IDE_DEBUGGER
+        override val kind: ToolKind = ToolKind.IDE_DEBUG_SESSION_CONTROL
         override val toolName: String = "DebugSessionControl"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? DebugSessionControlTool.Result)
@@ -217,7 +221,7 @@ sealed class RunEntry {
         override val args: GetRunOutputTool.Args? = null,
         override val result: GetRunOutputTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.OTHER
+        override val kind: ToolKind = ToolKind.IDE_RUN_OUTPUT
         override val toolName: String = "GetRunOutput"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? GetRunOutputTool.Result)
@@ -229,7 +233,7 @@ sealed class RunEntry {
         override val args: ExecuteRunConfigurationTool.Args? = null,
         override val result: ExecuteRunConfigurationTool.Result? = null,
     ) : RunEntry() {
-        override val kind: ToolKind = ToolKind.IDE_RUN_CONFIGURATION
+        override val kind: ToolKind = ToolKind.IDE_EXECUTE_RUN_CONFIGURATION
         override val toolName: String = "ExecuteRunConfiguration"
         override fun withAnyResult(result: Any?): RunEntry =
             copy(result = result as? ExecuteRunConfigurationTool.Result)

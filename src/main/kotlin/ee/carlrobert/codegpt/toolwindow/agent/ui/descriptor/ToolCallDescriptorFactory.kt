@@ -18,6 +18,7 @@ import ee.carlrobert.codegpt.toolwindow.agent.ui.approval.DiffViewAction
 import ee.carlrobert.codegpt.toolwindow.agent.ui.renderer.ChangeColors
 import ee.carlrobert.codegpt.toolwindow.agent.ui.renderer.DiffBadgeText
 import ee.carlrobert.codegpt.toolwindow.agent.ui.renderer.diffBadgeText
+import ee.carlrobert.codegpt.toolwindow.agent.ui.renderer.lineDiffStats
 import ee.carlrobert.codegpt.ui.UIUtil
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -43,11 +44,12 @@ object ToolCallDescriptorFactory {
         args: Any,
         result: Any? = null,
         overrideKind: ToolKind? = null,
-        summary: String? = null
+        summary: String? = null,
+        fileChangeSnapshot: FileChangeSnapshot? = null
     ): ToolCallDescriptor {
-        val name = ToolName.entries.find { it.id == toolName || it.aliases.contains(toolName) }
+        val name = ToolName.fromString(toolName)
         val kind = overrideKind ?: detectToolKind(name, args, result)
-        if (kind == ToolKind.OTHER && !isHandledOtherTool(args)) {
+        if (kind == ToolKind.OTHER) {
             logger.warn("Unrecognized tool descriptor toolName=$toolName}")
         }
 
@@ -55,8 +57,21 @@ object ToolCallDescriptorFactory {
         return when (kind) {
             ToolKind.SEARCH -> createSearchDescriptor(args, result, projectId)
             ToolKind.READ -> createReadDescriptor(args, result, projectId)
-            ToolKind.WRITE -> createWriteDescriptor(project, args, result, projectId)
-            ToolKind.EDIT -> createEditDescriptor(project, args, result, projectId)
+            ToolKind.WRITE -> createWriteDescriptor(
+                project,
+                args,
+                result,
+                projectId,
+                fileChangeSnapshot
+            )
+
+            ToolKind.EDIT -> createEditDescriptor(
+                project,
+                args,
+                result,
+                projectId,
+                fileChangeSnapshot
+            )
 
             ToolKind.BASH,
             ToolKind.BASH_OUTPUT,
@@ -73,20 +88,29 @@ object ToolCallDescriptorFactory {
             ToolKind.ASK_QUESTION -> createAskDescriptor(args, result, projectId)
             ToolKind.EXIT -> createExitDescriptor(args, result, projectId)
             ToolKind.DIAGNOSTICS -> createDiagnosticsDescriptor(args, result, projectId)
-            ToolKind.IDE_RUN_CONFIGURATION -> when (args) {
-                is GetRunConfigurationsTool.Args -> IdeToolDescriptors.createRunConfigurationDescriptor(args, result, projectId)
-                is ExecuteRunConfigurationTool.Args -> IdeToolDescriptors.createExecuteRunConfigurationDescriptor(args, result, projectId)
-                else -> IdeToolDescriptors.createRunConfigurationDescriptor(args, result, projectId)
-            }
-            ToolKind.IDE_REFACTORING -> IdeToolDescriptors.createRefactoringDescriptor(args, result, projectId)
-            ToolKind.IDE_DEBUGGER -> IdeToolDescriptors.createDebugSessionControlDescriptor(args, result, projectId)
-            ToolKind.IDE_SYMBOL_INFO -> IdeToolDescriptors.createSymbolInfoDescriptor(args, result, projectId)
+            ToolKind.IDE_RUN_CONFIGURATIONS ->
+                IdeToolDescriptors.createRunConfigurationDescriptor(args, result, projectId)
+
+            ToolKind.IDE_EXECUTE_RUN_CONFIGURATION ->
+                IdeToolDescriptors.createExecuteRunConfigurationDescriptor(args, result, projectId)
+
+            ToolKind.IDE_BREAKPOINT ->
+                IdeToolDescriptors.createBreakpointDescriptor(args, result, projectId)
+
+            ToolKind.IDE_BREAKPOINTS ->
+                IdeToolDescriptors.createGetBreakpointsDescriptor(args, result, projectId)
+
+            ToolKind.IDE_DEBUG_SESSIONS ->
+                IdeToolDescriptors.createDebugSessionsDescriptor(args, result, projectId)
+
+            ToolKind.IDE_RUN_OUTPUT ->
+                IdeToolDescriptors.createRunOutputDescriptor(args, result, projectId)
+
+            ToolKind.IDE_DEBUG_SESSION_CONTROL ->
+                IdeToolDescriptors.createDebugSessionControlDescriptor(args, result, projectId)
+
             ToolKind.OTHER -> run {
                 return@run when (args) {
-                    is BreakpointTool.Args -> IdeToolDescriptors.createBreakpointDescriptor(args, result, projectId)
-                    is GetBreakpointsTool.Args -> IdeToolDescriptors.createGetBreakpointsDescriptor(args, result, projectId)
-                    is GetDebugSessionsTool.Args -> IdeToolDescriptors.createDebugSessionsDescriptor(args, result, projectId)
-                    is GetRunOutputTool.Args -> IdeToolDescriptors.createRunOutputDescriptor(args, result, projectId)
                     else -> createOtherDescriptor(toolName, args, result, projectId)
                 }
             }
@@ -114,22 +138,21 @@ object ToolCallDescriptorFactory {
             toolName == ToolName.ASK_USER_QUESTION || args is AskUserQuestionTool.Args -> ToolKind.ASK_QUESTION
             toolName == ToolName.EXIT -> ToolKind.EXIT
             toolName == ToolName.DIAGNOSTICS || args is DiagnosticsTool.Args -> ToolKind.DIAGNOSTICS
-            args is GetRunConfigurationsTool.Args -> ToolKind.IDE_RUN_CONFIGURATION
-            args is ExecuteRunConfigurationTool.Args -> ToolKind.IDE_RUN_CONFIGURATION
-            args is DebugSessionControlTool.Args -> ToolKind.IDE_DEBUGGER
-            args is GetRunOutputTool.Args -> ToolKind.OTHER
-            args is GetBreakpointsTool.Args -> ToolKind.OTHER
-            args is BreakpointTool.Args -> ToolKind.OTHER
-            args is GetDebugSessionsTool.Args -> ToolKind.OTHER
+            toolName == ToolName.GET_RUN_CONFIGURATIONS ||
+                    args is GetRunConfigurationsTool.Args -> ToolKind.IDE_RUN_CONFIGURATIONS
+
+            toolName == ToolName.EXECUTE_RUN_CONFIGURATION ||
+                    args is ExecuteRunConfigurationTool.Args -> ToolKind.IDE_EXECUTE_RUN_CONFIGURATION
+
+            toolName == ToolName.BREAKPOINT || args is BreakpointTool.Args -> ToolKind.IDE_BREAKPOINT
+            toolName == ToolName.GET_BREAKPOINTS || args is GetBreakpointsTool.Args -> ToolKind.IDE_BREAKPOINTS
+            toolName == ToolName.GET_DEBUG_SESSIONS || args is GetDebugSessionsTool.Args -> ToolKind.IDE_DEBUG_SESSIONS
+            toolName == ToolName.GET_RUN_OUTPUT || args is GetRunOutputTool.Args -> ToolKind.IDE_RUN_OUTPUT
+            toolName == ToolName.DEBUG_SESSION_CONTROL ||
+                    args is DebugSessionControlTool.Args -> ToolKind.IDE_DEBUG_SESSION_CONTROL
+
             else -> ToolKind.OTHER
         }
-    }
-
-    private fun isHandledOtherTool(args: Any): Boolean {
-        return args is BreakpointTool.Args ||
-            args is GetBreakpointsTool.Args ||
-            args is GetDebugSessionsTool.Args ||
-            args is GetRunOutputTool.Args
     }
 
     private fun createMcpDescriptor(
@@ -201,7 +224,12 @@ object ToolCallDescriptorFactory {
             args = args,
             result = result,
             projectId = projectId,
-            actions = actions
+            actions = actions,
+            detailText = if (result is LoadSkillTool.Result.Success) {
+                "Loaded into context"
+            } else {
+                null
+            }
         )
     }
 
@@ -306,19 +334,20 @@ object ToolCallDescriptorFactory {
     ): ToolCallDescriptor {
         val readArgs = args as? ReadTool.Args
         val fileName = extractBaseName(readArgs?.filePath ?: "")
-        val actions = when (result) {
-            is ReadTool.Result.Success -> listOf(
-                ToolAction("${result.lineCount} lines", AllIcons.Actions.Show) {
-                    showTextDialog(result.content, "File Content: $fileName")
-                }
+        val lineBadge = when (result) {
+            is ReadTool.Result.Success -> Badge(
+                "${result.lineCount} lines",
+                JBColor.BLUE,
+                action = { showTextDialog(result.content, "File Content: $fileName") }
             )
-            else -> emptyList()
+
+            else -> null
         }
 
         return ToolCallDescriptor(
             kind = ToolKind.READ,
             icon = AllIcons.FileTypes.Text,
-            titlePrefix = "Read",
+            titlePrefix = "Read:",
             titleMain = "",
             tooltip = "Read file: ${readArgs?.filePath ?: ""}",
             fileLink = FileLink(
@@ -326,15 +355,11 @@ object ToolCallDescriptorFactory {
                 displayName = fileName,
                 enabled = true
             ),
-            actions = actions,
+            secondaryBadges = listOfNotNull(lineBadge),
             args = args,
             result = result,
             projectId = projectId,
-            detailText = when (result) {
-                is ReadTool.Result.Success -> "Loaded file content"
-                is ReadTool.Result.Error -> "Read failed"
-                else -> null
-            }
+            detailText = null
         )
     }
 
@@ -342,23 +367,44 @@ object ToolCallDescriptorFactory {
         project: Project,
         args: Any,
         result: Any?,
-        projectId: String?
+        projectId: String?,
+        fileChangeSnapshot: FileChangeSnapshot?
     ): ToolCallDescriptor {
         val writeArgs = args as? WriteTool.Args
         val fileName = extractBaseName(writeArgs?.filePath ?: "")
 
         val badges = mutableListOf<Badge>()
         val actions = mutableListOf<ToolAction>()
+        var diffPreview: ToolCallDiffPreview? = null
 
         if (result is WriteTool.Result && writeArgs != null) {
             when (result) {
                 is WriteTool.Result.Success -> {
                     badges.add(Badge("written", JBColor.GREEN))
-                    actions.add(
-                        ToolAction("Changes", AllIcons.Actions.Diff) {
-                            DiffViewAction.showDiff(writeArgs.filePath, project)
-                        }
-                    )
+                    if (fileChangeSnapshot != null) {
+                        val (inserted, deleted, changed) = lineDiffStats(
+                            fileChangeSnapshot.beforeText,
+                            fileChangeSnapshot.afterText
+                        )
+                        badges.addAll(getDiffBadges(diffBadgeText(inserted, deleted, changed)))
+                        diffPreview = ToolCallDiffPreview(writeArgs.filePath, fileChangeSnapshot)
+                        actions.add(
+                            ToolAction("View Diff", AllIcons.Actions.Diff) {
+                                DiffViewAction.showDiff(
+                                    fileChangeSnapshot.beforeText,
+                                    fileChangeSnapshot.afterText,
+                                    "Changes in $fileName",
+                                    project
+                                )
+                            }
+                        )
+                    } else {
+                        actions.add(
+                            ToolAction("Changes", AllIcons.Actions.Diff) {
+                                DiffViewAction.showDiff(writeArgs.filePath, project)
+                            }
+                        )
+                    }
                 }
 
 
@@ -371,7 +417,7 @@ object ToolCallDescriptorFactory {
         return ToolCallDescriptor(
             kind = ToolKind.WRITE,
             icon = AllIcons.FileTypes.Text,
-            titlePrefix = "Write",
+            titlePrefix = "Write:",
             titleMain = "",
             tooltip = "Write file: ${writeArgs?.filePath ?: ""}",
             secondaryBadges = badges,
@@ -388,7 +434,8 @@ object ToolCallDescriptorFactory {
                 is WriteTool.Result.Success -> "${writeArgs?.content?.lines()?.size ?: 0} lines written"
                 is WriteTool.Result.Error -> "Write failed"
                 else -> null
-            }
+            },
+            diffPreview = diffPreview
         )
     }
 
@@ -396,55 +443,74 @@ object ToolCallDescriptorFactory {
         project: Project,
         args: Any,
         result: Any?,
-        projectId: String?
+        projectId: String?,
+        fileChangeSnapshot: FileChangeSnapshot?
     ): ToolCallDescriptor {
         val editArgs = args as? EditTool.Args ?: throw IllegalArgumentException("Invalid args")
         val displayName = extractBaseName(editArgs.filePath)
         val badges = mutableListOf<Badge>()
         val actions = mutableListOf<ToolAction>()
+        var diffPreview: ToolCallDiffPreview? = null
         when (result) {
             is EditTool.Result.Success -> {
-                val oldLines = editArgs.oldString.split('\n').size
-                val newLines = editArgs.newString.split('\n').size
-                val changedPer = minOf(oldLines, newLines)
-                val addedPer = (newLines - oldLines).coerceAtLeast(0)
-                val deletedPer = (oldLines - newLines).coerceAtLeast(0)
-                val changed = changedPer * result.replacementsMade
-                val inserted = addedPer * result.replacementsMade
-                val deleted = deletedPer * result.replacementsMade
-
+                val (inserted, deleted, changed) = if (fileChangeSnapshot != null) {
+                    lineDiffStats(fileChangeSnapshot.beforeText, fileChangeSnapshot.afterText)
+                } else {
+                    val oldLines = editArgs.oldString.split('\n').size
+                    val newLines = editArgs.newString.split('\n').size
+                    val changedPer = minOf(oldLines, newLines)
+                    val addedPer = (newLines - oldLines).coerceAtLeast(0)
+                    val deletedPer = (oldLines - newLines).coerceAtLeast(0)
+                    Triple(
+                        addedPer * result.replacementsMade,
+                        deletedPer * result.replacementsMade,
+                        changedPer * result.replacementsMade
+                    )
+                }
                 val texts = diffBadgeText(inserted, deleted, changed)
                 badges.addAll(getDiffBadges(texts))
                 actions.add(
-                    ToolAction("${result.replacementsMade} changes", AllIcons.Actions.Diff) { _ ->
-                        try {
-                            val path = Path.of(editArgs.filePath)
-                            val after = Files.readString(path)
-                            val before = buildString {
-                                append(after)
-                            }.let { cur ->
-                                if (editArgs.replaceAll) {
-                                    cur.replace(editArgs.newString, editArgs.oldString)
-                                } else {
-                                    replaceFirstNOccurrences(
-                                        cur,
-                                        editArgs.newString,
-                                        editArgs.oldString,
-                                        result.replacementsMade
-                                    )
-                                }
-                            }
+                    ToolAction("View Diff", AllIcons.Actions.Diff) { _ ->
+                        if (fileChangeSnapshot != null) {
                             DiffViewAction.showDiff(
-                                before,
-                                after,
+                                fileChangeSnapshot.beforeText,
+                                fileChangeSnapshot.afterText,
                                 "Changes in ${extractBaseName(editArgs.filePath)}",
                                 project
                             )
-                        } catch (_: Exception) {
-                            DiffViewAction.showDiff(editArgs.filePath, project)
+                        } else {
+                            try {
+                                val path = Path.of(editArgs.filePath)
+                                val after = Files.readString(path)
+                                val before = buildString {
+                                    append(after)
+                                }.let { cur ->
+                                    if (editArgs.replaceAll) {
+                                        cur.replace(editArgs.newString, editArgs.oldString)
+                                    } else {
+                                        replaceFirstNOccurrences(
+                                            cur,
+                                            editArgs.newString,
+                                            editArgs.oldString,
+                                            result.replacementsMade
+                                        )
+                                    }
+                                }
+                                DiffViewAction.showDiff(
+                                    before,
+                                    after,
+                                    "Changes in ${extractBaseName(editArgs.filePath)}",
+                                    project
+                                )
+                            } catch (_: Exception) {
+                                DiffViewAction.showDiff(editArgs.filePath, project)
+                            }
                         }
                     }
                 )
+                if (fileChangeSnapshot != null) {
+                    diffPreview = ToolCallDiffPreview(editArgs.filePath, fileChangeSnapshot)
+                }
             }
 
             is EditTool.Result.Error -> {
@@ -461,8 +527,9 @@ object ToolCallDescriptorFactory {
         return ToolCallDescriptor(
             kind = ToolKind.EDIT,
             icon = AllIcons.Actions.Edit,
-            titlePrefix = "Edit",
+            titlePrefix = "Edit:",
             titleMain = "",
+            subtitleText = editArgs.shortDescription.trim().takeIf { it.isNotEmpty() },
             tooltip = "Edit file: ${editArgs.filePath}",
             secondaryBadges = badges,
             fileLink = FileLink(
@@ -480,16 +547,26 @@ object ToolCallDescriptorFactory {
                 is EditTool.Result.Success -> "${result.replacementsMade} replacement${if (result.replacementsMade == 1) "" else "s"} applied"
                 is EditTool.Result.Error -> "Edit failed"
                 else -> null
-            }
+            },
+            diffPreview = diffPreview
         )
     }
 
     private fun getDiffBadges(texts: DiffBadgeText): List<Badge> {
-        return listOf(
-            Badge(texts.inserted, ChangeColors.inserted),
-            Badge(texts.deleted, ChangeColors.deleted),
-            Badge(texts.changed, ChangeColors.modified)
+        return listOfNotNull(
+            texts.inserted.takeIf(::hasNonZeroDiffCount)?.let { Badge(it, ChangeColors.inserted) },
+            texts.deleted.takeIf(::hasNonZeroDiffCount)?.let { Badge(it, ChangeColors.deleted) },
+            texts.changed.takeIf(::hasNonZeroDiffCount)?.let { Badge(it, ChangeColors.modified) }
         )
+    }
+
+    private fun hasNonZeroDiffCount(text: String): Boolean {
+        val count = text
+            .drop(1)
+            .trim()
+            .takeWhile { it.isDigit() }
+            .toIntOrNull()
+        return count != null && count > 0
     }
 
     private fun replaceFirstNOccurrences(
@@ -543,7 +620,8 @@ object ToolCallDescriptorFactory {
             supportsStreaming = true,
             args = args,
             result = result,
-            projectId = projectId
+            projectId = projectId,
+            secondaryLayout = ToolCallSecondaryLayout.STACKED
         )
     }
 
@@ -587,20 +665,11 @@ object ToolCallDescriptorFactory {
             } else {
                 "Search: \"$pattern\" in $scopeOrPath"
             },
-            actions = if (result is IntelliJSearchTool.Result) {
-                listOf(
-                    ToolAction("${result.totalMatches} results", AllIcons.Actions.Show) {
-                        showTextDialog(result.output, "Search Results")
-                    }
-                )
-            } else {
-                emptyList()
-            },
             args = args,
             result = result,
             projectId = projectId,
             detailText = (result as? IntelliJSearchTool.Result)?.let {
-                if (it.totalMatches == 0) "No matches found" else "Search completed"
+                if (it.totalMatches == 0) "No matches found" else "${it.totalMatches} result${if (it.totalMatches == 1) "" else "s"}"
             }
         )
     }
@@ -632,7 +701,9 @@ object ToolCallDescriptorFactory {
             projectId = projectId,
             detailText = when (result) {
                 is WebSearchTool.Result -> "${result.results.size} result${if (result.results.size == 1) "" else "s"}"
-                is WebFetchTool.Result -> result.statusCode?.let { "HTTP $it" } ?: result.finalUrl ?: result.url
+                is WebFetchTool.Result -> result.statusCode?.let { "HTTP $it" } ?: result.finalUrl
+                ?: result.url
+
                 else -> null
             }
         )
@@ -765,7 +836,8 @@ object ToolCallDescriptorFactory {
             projectId = projectId,
             prefixColor = prefixColor,
             summary = taskSummary,
-            actions = actions
+            actions = actions,
+            secondaryLayout = ToolCallSecondaryLayout.STACKED
         )
     }
 
@@ -1027,7 +1099,10 @@ object ToolCallDescriptorFactory {
                 else -> {
                     if (result.output.isNotBlank()) {
                         actions.add(
-                            ToolAction("${result.diagnosticCount} $filterLabel", AllIcons.Actions.Show) {
+                            ToolAction(
+                                "${result.diagnosticCount} $filterLabel",
+                                AllIcons.Actions.Show
+                            ) {
                                 showTextDialog(result.output, "Diagnostics: $fileName")
                             }
                         )
@@ -1053,11 +1128,9 @@ object ToolCallDescriptorFactory {
             result = result,
             projectId = projectId,
             detailText = when (result) {
-                is DiagnosticsTool.Result -> if (result.error != null) {
-                    result.error
-                } else {
-                    if (result.output.isNotBlank()) "Diagnostics loaded" else "${result.diagnosticCount} $filterLabel"
-                }
+                is DiagnosticsTool.Result -> result.error
+                    ?: if (result.output.isNotBlank()) "Diagnostics loaded" else "${result.diagnosticCount} $filterLabel"
+
                 else -> null
             }
         )
@@ -1132,7 +1205,8 @@ object ToolCallDescriptorFactory {
                     Badge(
                         "${result.results.size} results",
                         JBColor.BLUE
-                    ))
+                    )
+                )
                 if (argsObj != null && !argsObj.allowedDomains.isNullOrEmpty()) {
                     badges.add(Badge("${argsObj.allowedDomains.size} domains", JBColor.GRAY))
                 }
@@ -1160,6 +1234,7 @@ object ToolCallDescriptorFactory {
                     showWebResultsDialog(result)
                 }
             )
+
             is WebFetchTool.Result -> if (result.error == null) {
                 listOf(
                     ToolAction("Content", AllIcons.Actions.Show) {
@@ -1169,6 +1244,7 @@ object ToolCallDescriptorFactory {
             } else {
                 emptyList()
             }
+
             else -> emptyList()
         }
     }

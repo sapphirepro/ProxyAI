@@ -1,5 +1,8 @@
 package ee.carlrobert.codegpt.toolwindow.agent.ui.renderer
 
+import com.intellij.diff.comparison.ComparisonManager
+import com.intellij.diff.comparison.ComparisonPolicy
+import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.ui.JBColor
 import java.awt.Color
 import java.awt.Graphics2D
@@ -20,7 +23,12 @@ data class DiffBadgeText(
     val summary: String
 )
 
-fun diffBadgeText(inserted: Int, deleted: Int, changed: Int, spaced: Boolean = true): DiffBadgeText {
+fun diffBadgeText(
+    inserted: Int,
+    deleted: Int,
+    changed: Int,
+    spaced: Boolean = true
+): DiffBadgeText {
     val sep = if (spaced) " " else ""
     return DiffBadgeText(
         inserted = "+$inserted$sep",
@@ -41,51 +49,33 @@ fun applyStringReplacement(
     replaceAll: Boolean
 ): String {
     if (oldString.isEmpty()) return original
-    return if (replaceAll) original.replace(oldString, newString) else original.replaceFirst(oldString, newString)
+    return if (replaceAll) original.replace(oldString, newString) else original.replaceFirst(
+        oldString,
+        newString
+    )
 }
 
 fun lineDiffStats(before: String, after: String): Triple<Int, Int, Int> {
     if (before == after) return Triple(0, 0, 0)
-    val a = before.split('\n')
-    val b = after.split('\n')
-    val lcs = longestCommonSubsequenceLength(a, b)
-    val deletions = (a.size - lcs).coerceAtLeast(0)
-    val insertions = (b.size - lcs).coerceAtLeast(0)
-    val changed = 0
-    return Triple(insertions, deletions, changed)
-}
-
-private fun longestCommonSubsequenceLength(a: List<String>, b: List<String>): Int {
-    val n = a.size
-    val m = b.size
-    if (n == 0 || m == 0) return 0
-
-    val smaller = if (n < m) a else b
-    val larger = if (n < m) b else a
-
-    val smallSize = smaller.size
-    val largeSize = larger.size
-
-    var prev = IntArray(smallSize + 1)
-    var curr = IntArray(smallSize + 1)
-
-    for (i in 1..largeSize) {
-        val largerLine = larger[i - 1]
-        val temp = prev
-        prev = curr
-        curr = temp
-
-        for (j in 1..smallSize) {
-            curr[j] = if (largerLine == smaller[j - 1]) {
-                prev[j - 1] + 1
-            } else {
-                maxOf(prev[j], curr[j - 1])
-            }
-        }
+    return compareLineFragments(before, after).fold(Triple(0, 0, 0)) { (ins, del, mod), fragment ->
+        val deletedLines = fragment.endLine1 - fragment.startLine1
+        val insertedLines = fragment.endLine2 - fragment.startLine2
+        val modifiedLines = minOf(deletedLines, insertedLines)
+        Triple(
+            ins + (insertedLines - modifiedLines),
+            del + (deletedLines - modifiedLines),
+            mod + modifiedLines
+        )
     }
-
-    return curr[smallSize]
 }
+
+private fun compareLineFragments(before: String, after: String) = ComparisonManager.getInstance()
+    .compareLines(
+        before.replace("\r\n", "\n"),
+        after.replace("\r\n", "\n"),
+        ComparisonPolicy.DEFAULT,
+        EmptyProgressIndicator()
+    )
 
 fun drawCenteredText(g2: Graphics2D, text: String, width: Int, height: Int) {
     val metrics = g2.fontMetrics

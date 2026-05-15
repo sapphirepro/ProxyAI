@@ -2,6 +2,7 @@ package ee.carlrobert.codegpt.toolwindow.agent.ui.descriptor
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.JBColor
+import com.intellij.util.IconUtil
 import ee.carlrobert.codegpt.agent.tools.ide.*
 
 /**
@@ -58,7 +59,7 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.IDE_RUN_CONFIGURATION,
+            kind = ToolKind.IDE_RUN_CONFIGURATIONS,
             icon = icon,
             titlePrefix = titlePrefix,
             titleMain = "Configurations",
@@ -119,7 +120,7 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.IDE_RUN_CONFIGURATION,
+            kind = ToolKind.IDE_EXECUTE_RUN_CONFIGURATION,
             icon = AllIcons.Toolwindows.ToolWindowRun,
             titlePrefix = "Run",
             titleMain = configurationName,
@@ -209,8 +210,8 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.OTHER,
-            icon = AllIcons.Debugger.Db_set_breakpoint,
+            kind = ToolKind.IDE_BREAKPOINT,
+            icon = IconUtil.scale(AllIcons.Debugger.Db_set_breakpoint, null, 0.75f),
             titlePrefix = "",
             titleMain = "$actionLabel breakpoint",
             tooltip = if (filePath.isNotEmpty()) "$actionLabel breakpoint at ${filePath}:${line}" else "$actionLabel breakpoint",
@@ -304,7 +305,7 @@ object IdeToolDescriptors {
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
         return ToolCallDescriptor(
-            kind = ToolKind.IDE_DEBUGGER,
+            kind = ToolKind.IDE_DEBUG_SESSION_CONTROL,
             icon = AllIcons.Toolwindows.ToolWindowDebugger,
             titlePrefix = "",
             titleMain = actionName,
@@ -384,9 +385,6 @@ object IdeToolDescriptors {
                                 appendLine()
                                 result.breakpoints.forEach { bp ->
                                     append("- ${bp.filePath}:L${bp.line}")
-                                    if (!bp.condition.isNullOrBlank()) {
-                                        append(" if ${bp.condition}")
-                                    }
                                     if (!bp.enabled) {
                                         append(" (disabled)")
                                     }
@@ -411,8 +409,8 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.OTHER,
-            icon = AllIcons.Debugger.Db_set_breakpoint,
+            kind = ToolKind.IDE_BREAKPOINTS,
+            icon = IconUtil.scale(AllIcons.Debugger.Db_set_breakpoint, null, 0.75f),
             titlePrefix = "",
             titleMain = "Breakpoints",
             tooltip = "List breakpoints in project",
@@ -503,7 +501,7 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.IDE_DEBUGGER,
+            kind = ToolKind.IDE_DEBUG_SESSIONS,
             icon = AllIcons.Toolwindows.ToolWindowDebugger,
             titlePrefix = "",
             titleMain = "Debug sessions",
@@ -573,7 +571,7 @@ object IdeToolDescriptors {
         }
 
         return ToolCallDescriptor(
-            kind = ToolKind.OTHER,
+            kind = ToolKind.IDE_RUN_OUTPUT,
             icon = AllIcons.RunConfigurations.TestState.Run,
             titlePrefix = "Output",
             titleMain = name,
